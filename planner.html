@@ -49,7 +49,9 @@ svg.mode-select { cursor: default; }
 .safe-zone-label { font-size: 60px; fill: #f80; pointer-events: none; }
 .summary-text { font-size: 110px; fill: #111; font-family: sans-serif; pointer-events: none; font-weight: bold; }
 .summary-line { font-size: 80px; fill: #444; font-family: sans-serif; pointer-events: none; }
-.side-label { font-size: 200px; fill: #aaa; font-family: sans-serif; pointer-events: none; font-weight: bold; }
+.side-label { font-size: 200px; fill: #ccc; font-family: sans-serif; pointer-events: none; font-weight: bold; }
+.side-label.active { fill: #0a7; }
+.summary-text.active { fill: #0a7; }
 .ruler-tick { stroke: #333; stroke-width: 3; pointer-events: none; }
 .ruler-label { font-size: 70px; fill: #333; font-family: monospace; pointer-events: none; }
 .crosshair { stroke: #ff0066; stroke-width: 12; stroke-dasharray: 60,30; pointer-events: none; opacity: 0.9; }
@@ -382,7 +384,7 @@ function drawSide(side) {
   const svgY = (y) => cfg.roofH - y;
 
   svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(0) + 380,
-    side.toUpperCase(), 'side-label', 'middle'));
+    side.toUpperCase(), 'side-label' + (isActive ? ' active' : ''), 'middle'));
 
   svg.appendChild(svgEl('rect', {
     x: ox, y: svgY(cfg.roofH), width: cfg.roofW, height: cfg.roofH,
@@ -512,7 +514,7 @@ function drawSide(side) {
   const activeMark = isActive ? '  ◀ active' : '';
   svg.appendChild(svgText(ox, -780,
     `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  (${p.watts}W)${activeMark}`,
-    'summary-text'));
+    'summary-text' + (isActive ? ' active' : '')));
   const warn = layout.panels.filter(pp => pp.rc < 2).length;
   const warnTxt = warn > 0 ? `  ⚠ ${warn} panel(s) <2 rails` : '';
   svg.appendChild(svgText(ox, -580,

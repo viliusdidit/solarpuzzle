@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Solar Layout Planner</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; font-family: -apple-system, system-ui, sans-serif; font-size: 13px; }
+#app { display: grid; grid-template-rows: auto 1fr 6px var(--scad-h, 160px); height: 100vh; }
+header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #2a2a2a; color: #eee; flex-wrap: wrap; }
+header h1 { font-size: 14px; margin: 0 12px 0 0; font-weight: 600; }
+.toolbar { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.toolbar button, .toolbar select { background: #444; color: #eee; border: 1px solid #555; padding: 4px 10px; cursor: pointer; border-radius: 3px; font-size: 12px; }
+.toolbar button:hover { background: #555; }
+.toolbar button.active { background: #0a7; border-color: #0a7; }
+.toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+.toolbar .sep { width: 1px; background: #555; margin: 0 6px; align-self: stretch; }
+main { display: grid; grid-template-rows: var(--sidebar-h, 110px) 6px 1fr; overflow: hidden; min-height: 0; }
+#sidebar { background: #f4f4f4; border-bottom: 1px solid #ccc; overflow: auto; padding: 6px 8px; display: flex; gap: 14px; align-items: flex-start; flex-wrap: nowrap; }
+.resizer { background: #ccc; cursor: ns-resize; }
+.resizer:hover { background: #0a7; }
+#sidebar .sec { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+#sidebar h3 { font-size: 11px; margin: 0 0 3px; text-transform: uppercase; color: #666; letter-spacing: 0.5px; white-space: nowrap; }
+#sidebar label { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 11px; }
+#sidebar label > span { color: #555; }
+#sidebar input[type="number"], #sidebar input[type="text"], #sidebar select { width: 90px; padding: 1px 4px; font-size: 11px; border: 1px solid #ccc; border-radius: 2px; }
+#sidebar .help { max-width: 240px; max-height: 90px; overflow-y: auto; }
+#side-tabs { display: flex; gap: 4px; margin-bottom: 4px; }
+#side-tabs button { flex: 1; padding: 6px 8px; border: 1px solid #bbb; background: #e0e0e0; cursor: pointer; font-size: 12px; border-radius: 3px; font-weight: 600; }
+#side-tabs button.active { background: #0a7; color: white; border-color: #0a7; }
+#canvas-wrap { background: #ddd; overflow: hidden; position: relative; }
+svg { width: 100%; height: 100%; display: block; cursor: crosshair; user-select: none; }
+svg.mode-select { cursor: default; }
+.rail { stroke: #1672e0; stroke-width: 4; cursor: ns-resize; }
+.rail-hit { stroke: transparent; stroke-width: 30; cursor: ns-resize; }
+.rail-label { font-size: 60px; fill: #1672e0; font-family: monospace; pointer-events: none; }
+.roof-outline { fill: white; stroke: #333; stroke-width: 8; }
+.roof-outline.inactive { stroke: #888; stroke-width: 6; }
+.roof-zone-below { fill: #d8d8d8; pointer-events: none; }
+.zone-label { font-size: 70px; fill: #888; pointer-events: none; }
+.panel { stroke: #111; stroke-width: 4; cursor: pointer; }
+.panel-label { font-size: 65px; fill: #111; pointer-events: none; font-family: sans-serif; }
+.obstacle-rect { fill: rgba(220, 30, 30, 0.35); stroke: #b00; stroke-width: 5; cursor: move; }
+.obstacle-handle { fill: #b00; stroke: white; stroke-width: 2; cursor: nwse-resize; }
+.poly-zone { fill: rgba(220, 30, 30, 0.30); stroke: #b00; stroke-width: 5; cursor: move; }
+.poly-vertex { fill: #b00; stroke: white; stroke-width: 2; cursor: move; }
+.poly-preview { fill: rgba(220, 30, 30, 0.18); stroke: #b00; stroke-width: 4; stroke-dasharray: 30,15; pointer-events: none; }
+.safe-zone-line { stroke: #f80; stroke-width: 6; pointer-events: none; }
+.safe-zone-label { font-size: 60px; fill: #f80; pointer-events: none; }
+.summary-text { font-size: 110px; fill: #111; font-family: sans-serif; pointer-events: none; font-weight: bold; }
+.summary-line { font-size: 80px; fill: #444; font-family: sans-serif; pointer-events: none; }
+.side-label { font-size: 200px; fill: #aaa; font-family: sans-serif; pointer-events: none; font-weight: bold; }
+.ruler-tick { stroke: #333; stroke-width: 3; pointer-events: none; }
+.ruler-label { font-size: 70px; fill: #333; font-family: monospace; pointer-events: none; }
+.crosshair { stroke: #ff0066; stroke-width: 12; stroke-dasharray: 60,30; pointer-events: none; opacity: 0.9; }
+.coord-text { font-size: 90px; fill: #0a7; font-family: monospace; pointer-events: none; font-weight: bold; }
+#rect-popup { position: absolute; background: white; border: 1px solid #888; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); padding: 8px; z-index: 100; display: none; font-size: 12px; }
+#rect-popup label { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
+#rect-popup input { width: 80px; padding: 2px 5px; font-size: 12px; border: 1px solid #ccc; }
+#rect-popup .row { display: flex; gap: 6px; margin-top: 6px; }
+#rect-popup button { padding: 3px 10px; font-size: 12px; cursor: pointer; }
+#scad-preview { background: #1e1e1e; color: #ddd; display: flex; flex-direction: column; overflow: hidden; }
+#scad-preview .header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #2a2a2a; }
+#scad-preview h3 { margin: 0; font-size: 12px; color: #aaa; flex: 1; }
+#scad-preview button { font-size: 11px; padding: 3px 8px; background: #444; border: 1px solid #555; color: #ddd; cursor: pointer; border-radius: 2px; }
+#scadOut { flex: 1; width: 100%; background: #1e1e1e; color: #ddd; border: none; padding: 8px 12px; font-family: monospace; font-size: 11px; resize: none; outline: none; min-height: 120px; }
+.summary-stats { background: white; border: 1px solid #ddd; border-radius: 3px; padding: 6px 8px; font-size: 12px; line-height: 1.6; }
+.summary-stats .big { color: #0a7; font-weight: 600; }
+.summary-stats .warn { color: #c00; }
+.col-list { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+.col-list button { background: #ddd; border: 1px solid #bbb; padding: 1px 6px; cursor: pointer; font-size: 11px; }
+.col-tag { display: inline-block; background: #ddd; padding: 2px 6px; border-radius: 2px; cursor: pointer; user-select: none; }
+.col-tag.land { background: #cef0d4; }
+.col-tag.port { background: #ffe9b3; }
+.help { font-size: 11px; color: #888; padding: 4px 0; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="app">
+
+<header>
+<h1>Solar Layout Planner</h1>
+<div class="toolbar">
+  <button data-mode="select" class="active">Select</button>
+  <button data-mode="rail">+ Rail</button>
+  <button data-mode="poly">Draw Polygon</button>
+  <button data-mode="rect">Draw Rectangle</button>
+  <button id="btn-close-poly" disabled>Close Polygon</button>
+  <span class="sep"></span>
+  <button id="btn-undo" disabled>Undo</button>
+  <span class="sep"></span>
+  <button id="btn-save">Save JSON</button>
+  <button id="btn-load">Load JSON</button>
+  <input type="file" id="load-input" accept=".json" hidden>
+  <button id="btn-load-scad">Upload .scad</button>
+  <input type="file" id="load-scad-input" accept=".scad" hidden>
+  <button id="btn-export-scad">Export .scad</button>
+  <span style="margin-left:auto;font-size:11px;color:#aaa" id="status">Ready</span>
+</div>
+</header>
+
+<main>
+
+<aside id="sidebar">
+  <div class="sec">
+    <h3>Active side</h3>
+    <div id="side-tabs">
+      <button data-side="east" class="active">East</button>
+      <button data-side="west">West</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Roof</h3>
+    <label><span>W</span><input type="number" id="cfg-roofW"></label>
+    <label><span>H</span><input type="number" id="cfg-roofH"></label>
+    <label><span>Start Y</span><input type="number" id="cfg-startY"></label>
+    <label><span>X off</span><input type="number" id="cfg-xOffset"></label>
+    <label><span>Safe X</span><input type="number" id="cfg-safeZoneX"></label>
+  </div>
+
+  <div class="sec">
+    <h3>Panel</h3>
+    <label><span>Model</span><select id="cfg-panelIdx"></select></label>
+    <label><span>Gap X</span><input type="number" id="cfg-gapX"></label>
+    <label><span>Gap Y</span><input type="number" id="cfg-gapY"></label>
+  </div>
+
+  <div class="sec">
+    <h3>Columns (L/P)</h3>
+    <div id="col-list" class="col-list"></div>
+    <div class="help">Click to toggle L/P; +/− to add/remove. Last entry repeats.</div>
+  </div>
+
+  <div class="sec">
+    <h3>This side</h3>
+    <div class="summary-stats" id="stats"></div>
+  </div>
+
+  <div class="sec">
+    <h3>System total</h3>
+    <div class="summary-stats" id="system-stats"></div>
+  </div>
+
+  <div class="sec">
+    <h3>Help</h3>
+    <div class="help">
+      <b>Tabs</b> switch active side (or click on a roof).<br>
+      <b>+Rail</b>: click on roof.<br>
+      <b>Polygon</b>: click vertices, then dbl-click / Enter / Shift+Click / Close button.<br>
+      <b>Rectangle</b>: drag.<br>
+      <b>Move/select</b> existing items works in any tool mode.<br>
+      <b>Delete</b>: select then Delete. <b>Undo</b>: Ctrl/Cmd+Z. <b>Esc</b>: cancel.
+    </div>
+  </div>
+</aside>
+
+<div class="resizer" id="resizer-top" title="Drag to resize info bar"></div>
+
+<div id="canvas-wrap">
+<svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+<div id="rect-popup">
+  <label>X (mm)<input type="number" id="rp-x"></label>
+  <label>Y (mm)<input type="number" id="rp-y"></label>
+  <label>W (mm)<input type="number" id="rp-w"></label>
+  <label>H (mm)<input type="number" id="rp-h"></label>
+  <div class="row">
+    <button id="rp-close">Close</button>
+    <button id="rp-delete" style="margin-left:auto;color:#b00">Delete</button>
+  </div>
+</div>
+</div>
+
+</main>
+
+<div class="resizer" id="resizer-bot" title="Drag to resize SCAD pane"></div>
+
+<div id="scad-preview">
+  <div class="header">
+    <h3>SCAD output (active side)</h3>
+    <button id="btn-copy-scad">Copy</button>
+  </div>
+  <textarea id="scadOut" readonly spellcheck="false"></textarea>
+</div>
+
+</div><!-- /#app -->
+
+<script>
+"use strict";
+
+// ════════════════════════════════════════════════════════════════════
+// Catalog & defaults
+// ════════════════════════════════════════════════════════════════════
+const CATALOG = [
+  { label: '440W 1134×1776 (test)',      w: 1134, h: 1776, watts: 440 },
+  { label: '460W 1134×1722 (Path B)',    w: 1134, h: 1722, watts: 460 },
+  { label: '440W 1086×1808 (Path A)',    w: 1086, h: 1808, watts: 440 },
+  { label: 'Jinko 420W 1134×1722',       w: 1134, h: 1722, watts: 420 },
+  { label: 'CECEP 405W 1134×1722',       w: 1134, h: 1722, watts: 405 },
+  { label: 'Trina 440W 1134×1762',       w: 1134, h: 1762, watts: 440 },
+  { label: 'Hyundai 455W 1134×1762',     w: 1134, h: 1762, watts: 455 },
+];
+
+const COL_COLORS = ['#3fbf5f', '#e6b022', '#3392e6', '#bf4dcc', '#67c4d4'];
+const WARN_COLOR = '#e63333';
+
+function blankCfg(roofW, roofH, withVelux) {
+  return {
+    roofW: roofW,
+    roofH: roofH,
+    startY: 230,
+    xOffset: withVelux ? 200 : 0,
+    rails: [600, 1600, 2300, 3000, 3700, 4700, 5400, 6100],
+    gapX: 10,
+    gapY: 10,
+    panelIdx: 1,
+    columnOrientations: withVelux ? [1, 0] : [0],
+    obstacles: withVelux ? [{ x: 4410, y: 2680, w: 830, h: 1010 }] : [],
+    polyObstacles: [],
+    safeZoneX: withVelux ? 4410 : 0,
+    showRulers: true,
+  };
+}
+
+const DEFAULT_STATE = {
+  west: blankCfg(7010, 7190, false),
+  east: blankCfg(6500, 7190, true),
+  activeSide: 'east',
+};
+
+// ════════════════════════════════════════════════════════════════════
+// State + history
+// ════════════════════════════════════════════════════════════════════
+let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+const fromLS = localStorage.getItem('solar-planner-state');
+if (fromLS) {
+  try {
+    const obj = JSON.parse(fromLS);
+    if (obj.west && obj.east) state = obj;
+  } catch (e) {}
+}
+
+const undoStack = [];
+const UNDO_MAX = 20;
+function snapshot() {
+  undoStack.push(JSON.stringify(state));
+  while (undoStack.length > UNDO_MAX) undoStack.shift();
+  document.getElementById('btn-undo').disabled = undoStack.length === 0;
+}
+function undo() {
+  if (undoStack.length === 0) return;
+  state = JSON.parse(undoStack.pop());
+  document.getElementById('btn-undo').disabled = undoStack.length === 0;
+  syncInputs(); buildColList(); buildSideTabs(); render(); persist();
+}
+function persist() {
+  localStorage.setItem('solar-planner-state', JSON.stringify(state));
+}
+
+function active() { return state[state.activeSide]; }
+
+let mode = 'select';
+let drawingPoly = null;
+let drawingPolySide = null;
+let drawingRect = null;
+let drawingRectSide = null;
+let dragging = null;
+let selected = null;
+
+const svg = document.getElementById('canvas');
+
+// ════════════════════════════════════════════════════════════════════
+// Layout per side
+// ════════════════════════════════════════════════════════════════════
+function ori(cfg, col) { return cfg.columnOrientations[Math.min(col, cfg.columnOrientations.length - 1)]; }
+function pw(cfg, col, p) { return ori(cfg, col) === 1 ? p.h : p.w; }
+function ph(cfg, col, p) { return ori(cfg, col) === 1 ? p.w : p.h; }
+function colXBase(cfg, col, p) { let x = 0; for (let i = 0; i < col; i++) x += pw(cfg, i, p) + cfg.gapX; return x; }
+function colX(cfg, col, p) { return cfg.xOffset + colXBase(cfg, col, p); }
+function nrows(cfg, col, p) { return Math.max(0, Math.floor((cfg.roofH - cfg.startY + cfg.gapY) / (ph(cfg, col, p) + cfg.gapY))); }
+function ncols(cfg, p) {
+  let c = 0;
+  while (c < 30 && colX(cfg, c, p) + pw(cfg, c, p) <= cfg.roofW) c++;
+  return c;
+}
+function railCount(cfg, py, h) {
+  let n = 0;
+  for (const r of cfg.rails) if (r >= py && r <= py + h) n++;
+  return n;
+}
+function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+function pointInPoly(px, py, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    if (((yi > py) !== (yj > py)) &&
+        (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function panelInAnyPoly(cfg, x, y, w, h) {
+  for (const poly of cfg.polyObstacles) {
+    const cs = [[x+1, y+1], [x+w-1, y+1], [x+1, y+h-1], [x+w-1, y+h-1]];
+    for (const c of cs) if (pointInPoly(c[0], c[1], poly)) return true;
+  }
+  return false;
+}
+function overlapsObstacle(cfg, x, y, w, h) {
+  for (const o of cfg.obstacles) if (rectsOverlap(x, y, w, h, o.x, o.y, o.w, o.h)) return true;
+  return panelInAnyPoly(cfg, x, y, w, h);
+}
+function computeLayout(cfg) {
+  const p = CATALOG[cfg.panelIdx] || CATALOG[1];
+  const nc = ncols(cfg, p);
+  const panels = [];
+  for (let col = 0; col < nc; col++) {
+    const cx = colX(cfg, col, p), cw = pw(cfg, col, p), chh = ph(cfg, col, p);
+    const nr = nrows(cfg, col, p);
+    const oriCh = ori(cfg, col) === 1 ? 'L' : 'P';
+    for (let row = 0; row < nr; row++) {
+      const py = cfg.startY + row * (chh + cfg.gapY);
+      if (overlapsObstacle(cfg, cx, py, cw, chh)) continue;
+      const rc = railCount(cfg, py, chh);
+      panels.push({ col, row, x: cx, y: py, w: cw, h: chh, ori: oriCh, rc, watts: p.watts });
+    }
+  }
+  const totalW = panels.reduce((s, x) => s + x.watts, 0);
+  return { panels, nc, totalP: panels.length, totalW, panelDim: p };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Two-side coordinate system
+// ════════════════════════════════════════════════════════════════════
+const PAD_X = 200;       // left/right padding around roofs
+const PAD_BOTTOM = 600;  // padding below roofs (keep room for ruler labels)
+const PAD_TOP = 200;     // padding above the title block
+const TOPLABEL = 900;    // space reserved for title + dim line + coord label
+const SIDE_GAP = 800;
+
+function sideOriginX(side) {
+  if (side === 'east') return 0;
+  return state.east.roofW + SIDE_GAP;
+}
+function maxRoofH() { return Math.max(state.west.roofH, state.east.roofH); }
+function whichSide(x) {
+  const westStart = sideOriginX('west');
+  const eastEnd = state.east.roofW;
+  const mid = (eastEnd + westStart) / 2;
+  return x < mid ? 'east' : 'west';
+}
+function pointerToSideMM(e, side) {
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const m = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const ox = sideOriginX(side);
+  const cfg = state[side];
+  return { x: m.x - ox, y: cfg.roofH - m.y };
+}
+function pointerAuto(e) {
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const m = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const side = whichSide(m.x);
+  return { side, ...pointerToSideMM(e, side) };
+}
+
+// ════════════════════════════════════════════════════════════════════
+// SVG helpers
+// ════════════════════════════════════════════════════════════════════
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  if (attrs) for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+function clearChildren(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+}
+function svgText(x, y, content, cls, anchor, baseline) {
+  const t = svgEl('text', { x, y, class: cls });
+  if (anchor) t.setAttribute('text-anchor', anchor);
+  if (baseline) t.setAttribute('dominant-baseline', baseline);
+  t.textContent = String(content);
+  return t;
+}
+
+function drawSide(side) {
+  const cfg = state[side];
+  const ox = sideOriginX(side);
+  const isActive = side === state.activeSide;
+  const layout = computeLayout(cfg);
+  const svgY = (y) => cfg.roofH - y;
+
+  svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(0) + 380,
+    side.toUpperCase(), 'side-label', 'middle'));
+
+  svg.appendChild(svgEl('rect', {
+    x: ox, y: svgY(cfg.roofH), width: cfg.roofW, height: cfg.roofH,
+    class: 'roof-outline' + (isActive ? '' : ' inactive')
+  }));
+
+  if (cfg.startY > 0) {
+    svg.appendChild(svgEl('rect', {
+      x: ox, y: svgY(cfg.startY), width: cfg.roofW, height: cfg.startY,
+      class: 'roof-zone-below'
+    }));
+    svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(cfg.startY / 2),
+      `no panels below ${cfg.startY}mm`, 'zone-label', 'middle', 'middle'));
+  }
+
+  if (cfg.showRulers) {
+    for (let yMm = 0; yMm <= cfg.roofH; yMm += 100) {
+      const tw = (yMm % 1000 === 0) ? 80 : (yMm % 500 === 0) ? 50 : 25;
+      svg.appendChild(svgEl('line', { x1: ox - tw / 2, y1: svgY(yMm), x2: ox + tw / 2, y2: svgY(yMm), class: 'ruler-tick' }));
+      svg.appendChild(svgEl('line', { x1: ox + cfg.roofW - tw / 2, y1: svgY(yMm), x2: ox + cfg.roofW + tw / 2, y2: svgY(yMm), class: 'ruler-tick' }));
+      if (yMm % 1000 === 0) {
+        if (side === 'east') {
+          svg.appendChild(svgText(ox - 100, svgY(yMm), (yMm / 1000) + 'm', 'ruler-label', 'end', 'middle'));
+        } else {
+          svg.appendChild(svgText(ox + cfg.roofW + 100, svgY(yMm), (yMm / 1000) + 'm', 'ruler-label', 'start', 'middle'));
+        }
+      }
+    }
+  }
+
+  cfg.rails.forEach((r, idx) => {
+    const hit = svgEl('line', {
+      x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r), class: 'rail-hit'
+    });
+    hit.dataset.kind = 'rail'; hit.dataset.idx = idx; hit.dataset.side = side;
+    svg.appendChild(hit);
+    const isSel = selected && selected.kind === 'rail' && selected.side === side && selected.idx === idx;
+    svg.appendChild(svgEl('line', {
+      x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r),
+      class: 'rail',
+      stroke: isSel ? '#f80' : '#1672e0'
+    }));
+  });
+
+  layout.panels.forEach(p => {
+    const c = (p.rc >= 2) ? COL_COLORS[p.col % COL_COLORS.length] : WARN_COLOR;
+    svg.appendChild(svgEl('rect', {
+      x: ox + p.x, y: svgY(p.y + p.h), width: p.w, height: p.h,
+      fill: c, class: 'panel', 'fill-opacity': 0.85
+    }));
+    const cx = ox + p.x + p.w / 2, cy = svgY(p.y + p.h / 2);
+    svg.appendChild(svgText(cx, cy - 90, `C${p.col}R${p.row}`, 'panel-label', 'middle', 'middle'));
+    svg.appendChild(svgText(cx, cy, p.ori, 'panel-label', 'middle', 'middle'));
+    svg.appendChild(svgText(cx, cy + 90, p.watts + 'W', 'panel-label', 'middle', 'middle'));
+  });
+
+  cfg.obstacles.forEach((o, idx) => {
+    const isSel = selected && selected.kind === 'obstacle' && selected.side === side && selected.idx === idx;
+    const r = svgEl('rect', {
+      x: ox + o.x, y: svgY(o.y + o.h), width: o.w, height: o.h,
+      class: 'obstacle-rect',
+      stroke: isSel ? '#f80' : '#b00'
+    });
+    r.dataset.kind = 'obstacle'; r.dataset.idx = idx; r.dataset.side = side;
+    svg.appendChild(r);
+    svg.appendChild(svgEl('line', { x1: ox + o.x, y1: svgY(o.y), x2: ox + o.x + o.w, y2: svgY(o.y + o.h), stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
+    svg.appendChild(svgEl('line', { x1: ox + o.x + o.w, y1: svgY(o.y), x2: ox + o.x, y2: svgY(o.y + o.h), stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
+    const handle = svgEl('rect', {
+      x: ox + o.x + o.w - 70, y: svgY(o.y + o.h) - 70,
+      width: 140, height: 140, class: 'obstacle-handle'
+    });
+    handle.dataset.kind = 'obstacle-handle'; handle.dataset.idx = idx; handle.dataset.side = side;
+    svg.appendChild(handle);
+  });
+
+  cfg.polyObstacles.forEach((poly, idx) => {
+    const pts = poly.map(p => `${ox + p[0]},${svgY(p[1])}`).join(' ');
+    const isSel = selected && selected.kind === 'poly' && selected.side === side && selected.idx === idx;
+    const polyEl = svgEl('polygon', {
+      points: pts, class: 'poly-zone',
+      stroke: isSel ? '#f80' : '#b00'
+    });
+    polyEl.dataset.kind = 'poly'; polyEl.dataset.idx = idx; polyEl.dataset.side = side;
+    svg.appendChild(polyEl);
+    poly.forEach((v, vi) => {
+      const c = svgEl('circle', {
+        cx: ox + v[0], cy: svgY(v[1]), r: 70, class: 'poly-vertex'
+      });
+      c.dataset.kind = 'polyVertex'; c.dataset.idx = idx; c.dataset.vidx = vi; c.dataset.side = side;
+      svg.appendChild(c);
+    });
+  });
+
+  if (drawingPoly && drawingPolySide === side && drawingPoly.length >= 1) {
+    const pts = drawingPoly.map(p => `${ox + p[0]},${svgY(p[1])}`).join(' ');
+    if (drawingPoly.length >= 3) {
+      svg.appendChild(svgEl('polygon', { points: pts, class: 'poly-preview' }));
+    } else {
+      svg.appendChild(svgEl('polyline', { points: pts, class: 'poly-preview', fill: 'none' }));
+    }
+    drawingPoly.forEach(v => {
+      svg.appendChild(svgEl('circle', { cx: ox + v[0], cy: svgY(v[1]), r: 60, fill: '#b00', stroke: 'white', 'stroke-width': 2 }));
+    });
+  }
+
+  if (drawingRect && drawingRectSide === side) {
+    const r = drawingRect;
+    const x = Math.min(r.x0, r.x), y = Math.min(r.y0, r.y);
+    const w = Math.abs(r.x - r.x0), h = Math.abs(r.y - r.y0);
+    svg.appendChild(svgEl('rect', {
+      x: ox + x, y: svgY(y + h), width: w, height: h,
+      fill: 'rgba(220,30,30,0.3)', stroke: '#b00', 'stroke-width': 5,
+      'stroke-dasharray': '30,15', 'pointer-events': 'none'
+    }));
+  }
+
+  if (cfg.safeZoneX > 0 && cfg.safeZoneX < cfg.roofW) {
+    svg.appendChild(svgEl('line', {
+      x1: ox + cfg.safeZoneX, y1: svgY(cfg.roofH), x2: ox + cfg.safeZoneX, y2: svgY(0),
+      class: 'safe-zone-line'
+    }));
+    svg.appendChild(svgText(ox + cfg.safeZoneX, svgY(cfg.roofH) - 80,
+      `safe zone ${cfg.safeZoneX / 1000}m`, 'safe-zone-label', 'middle'));
+  }
+
+  const p = CATALOG[cfg.panelIdx] || CATALOG[1];
+  svg.appendChild(svgText(ox, -780,
+    `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  (${p.watts}W)`,
+    'summary-text'));
+  svg.appendChild(svgText(ox, -580,
+    `${cfg.roofW}×${cfg.roofH}mm  panel ${p.w}×${p.h}  cols ${layout.nc}`,
+    'summary-line'));
+
+  return layout;
+}
+
+function render() {
+  const totalW = state.west.roofW + state.east.roofW + SIDE_GAP;
+  const maxH = maxRoofH();
+  const vbX = -PAD_X, vbY = -PAD_TOP - TOPLABEL;
+  const vbW = totalW + 2 * PAD_X;
+  const vbH = maxH + PAD_TOP + TOPLABEL + PAD_BOTTOM;
+  svg.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+  svg.classList.toggle('mode-select', mode === 'select');
+
+  clearChildren(svg);
+
+  const lw = drawSide('west');
+  const le = drawSide('east');
+
+  updateSidebar(lw, le);
+  updateSCAD();
+  document.getElementById('btn-close-poly').disabled = !(drawingPoly && drawingPoly.length >= 3);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Sidebar
+// ════════════════════════════════════════════════════════════════════
+function buildPanelSelect() {
+  const sel = document.getElementById('cfg-panelIdx');
+  clearChildren(sel);
+  CATALOG.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = p.label;
+    sel.appendChild(opt);
+  });
+}
+
+function buildSideTabs() {
+  document.querySelectorAll('#side-tabs button').forEach(b => {
+    b.classList.toggle('active', b.dataset.side === state.activeSide);
+  });
+}
+
+function buildColList() {
+  const list = document.getElementById('col-list');
+  clearChildren(list);
+  const cfg = active();
+  cfg.columnOrientations.forEach((o, i) => {
+    const t = document.createElement('span');
+    t.className = 'col-tag ' + (o === 1 ? 'land' : 'port');
+    t.textContent = o === 1 ? 'L' : 'P';
+    t.title = 'Click to toggle';
+    t.addEventListener('click', () => {
+      snapshot();
+      cfg.columnOrientations[i] = (cfg.columnOrientations[i] === 1) ? 0 : 1;
+      buildColList(); render(); persist();
+    });
+    list.appendChild(t);
+  });
+  const minus = document.createElement('button');
+  minus.textContent = '−';
+  minus.addEventListener('click', () => {
+    if (cfg.columnOrientations.length > 1) {
+      snapshot();
+      cfg.columnOrientations.pop();
+      buildColList(); render(); persist();
+    }
+  });
+  const plus = document.createElement('button');
+  plus.textContent = '+';
+  plus.addEventListener('click', () => {
+    snapshot();
+    cfg.columnOrientations.push(0);
+    buildColList(); render(); persist();
+  });
+  list.appendChild(minus);
+  list.appendChild(plus);
+}
+
+function syncInputs() {
+  const cfg = active();
+  document.getElementById('cfg-roofW').value = cfg.roofW;
+  document.getElementById('cfg-roofH').value = cfg.roofH;
+  document.getElementById('cfg-startY').value = cfg.startY;
+  document.getElementById('cfg-xOffset').value = cfg.xOffset;
+  document.getElementById('cfg-safeZoneX').value = cfg.safeZoneX;
+  document.getElementById('cfg-gapX').value = cfg.gapX;
+  document.getElementById('cfg-gapY').value = cfg.gapY;
+  document.getElementById('cfg-panelIdx').value = cfg.panelIdx;
+}
+
+function updateSidebar(layoutWest, layoutEast) {
+  const layout = state.activeSide === 'west' ? layoutWest : layoutEast;
+  const cfg = active();
+  const stats = document.getElementById('stats');
+  clearChildren(stats);
+  const warnCount = layout.panels.filter(p => p.rc < 2).length;
+
+  const l1 = document.createElement('div');
+  const big1 = document.createElement('span'); big1.className = 'big'; big1.textContent = String(layout.totalP);
+  l1.appendChild(big1);
+  l1.appendChild(document.createTextNode(' panels · '));
+  const big2 = document.createElement('span'); big2.className = 'big';
+  big2.textContent = (layout.totalW / 1000).toFixed(2) + ' kWp';
+  l1.appendChild(big2);
+  stats.appendChild(l1);
+
+  const l2 = document.createElement('div');
+  l2.textContent = `Cols: ${layout.nc}, rails: ${cfg.rails.length}`;
+  stats.appendChild(l2);
+
+  const l3 = document.createElement('div');
+  if (warnCount > 0) {
+    const w = document.createElement('span'); w.className = 'warn';
+    w.textContent = `${warnCount} panel(s) with <2 rails`;
+    l3.appendChild(w);
+  } else {
+    l3.textContent = 'All panels rail-compliant';
+  }
+  stats.appendChild(l3);
+
+  const sys = document.getElementById('system-stats');
+  clearChildren(sys);
+  const totalP = layoutWest.totalP + layoutEast.totalP;
+  const totalW = layoutWest.totalW + layoutEast.totalW;
+  const sl1 = document.createElement('div');
+  const sb1 = document.createElement('span'); sb1.className = 'big'; sb1.textContent = String(totalP);
+  sl1.appendChild(sb1);
+  sl1.appendChild(document.createTextNode(' panels · '));
+  const sb2 = document.createElement('span'); sb2.className = 'big';
+  sb2.textContent = (totalW / 1000).toFixed(2) + ' kWp';
+  sl1.appendChild(sb2);
+  sys.appendChild(sl1);
+  const sl2 = document.createElement('div');
+  sl2.textContent = `West ${layoutWest.totalP}p + East ${layoutEast.totalP}p`;
+  sys.appendChild(sl2);
+}
+
+['roofW', 'roofH', 'startY', 'xOffset', 'safeZoneX', 'gapX', 'gapY'].forEach(k => {
+  const el = document.getElementById('cfg-' + k);
+  el.addEventListener('input', () => {
+    const v = parseInt(el.value, 10);
+    if (!isNaN(v)) {
+      snapshot();
+      active()[k] = v;
+      render(); persist();
+    }
+  });
+});
+document.getElementById('cfg-panelIdx').addEventListener('change', e => {
+  snapshot();
+  active().panelIdx = parseInt(e.target.value, 10);
+  render(); persist();
+});
+
+document.querySelectorAll('#side-tabs button').forEach(b => {
+  b.addEventListener('click', () => {
+    state.activeSide = b.dataset.side;
+    selected = null;
+    drawingPoly = null; drawingRect = null;
+    buildSideTabs(); syncInputs(); buildColList(); render(); persist();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// SCAD generation + parsing (uses matchAll, not RegExp.exec)
+// ════════════════════════════════════════════════════════════════════
+function genSCAD(side) {
+  const cfg = state[side];
+  const p = CATALOG[cfg.panelIdx] || CATALOG[1];
+  const obstacles = cfg.obstacles.map(o =>
+    `[${Math.round(o.x)}, ${Math.round(o.y)}, ${Math.round(o.w)}, ${Math.round(o.h)}]`
+  ).join(', ');
+  const polys = cfg.polyObstacles.map(poly =>
+    `[${poly.map(v => `[${Math.round(v[0])}, ${Math.round(v[1])}]`).join(', ')}]`
+  ).join(', ');
+  const cols = cfg.columnOrientations.join(', ');
+  const rails = cfg.rails.map(r => Math.round(r)).join(', ');
+  return `// Generated by planner.html  ${new Date().toISOString().slice(0, 10)}
+// Side: ${side.toUpperCase()}
+include <../solar_layout.scad>
+
+ROOF_W              = ${cfg.roofW};
+ROOF_H              = ${cfg.roofH};
+START_Y             = ${cfg.startY};
+X_OFFSET            = ${cfg.xOffset};
+RAILS               = [${rails}];
+GAP_X               = ${cfg.gapX};
+GAP_Y               = ${cfg.gapY};
+CATALOG             = [[${p.w}, ${p.h}, ${p.watts}]];
+SEL                 = 0;
+COLUMN_ORIENTATIONS = [${cols}];
+OBSTACLES           = [${obstacles}];
+POLY_OBSTACLES      = [${polys}];
+SAFE_ZONE_X         = ${cfg.safeZoneX};
+SHOW_RULERS         = true;
+`;
+}
+
+function updateSCAD() {
+  document.getElementById('scadOut').value = genSCAD(state.activeSide);
+}
+
+function parseSCAD(text) {
+  const clean = text.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const cfg = blankCfg(7010, 7190, false);
+
+  const intMatch = (name) => {
+    const m = clean.match(new RegExp(name + '\\s*=\\s*(-?\\d+)\\s*;'));
+    return m ? parseInt(m[1], 10) : null;
+  };
+  const intArrMatch = (name) => {
+    const m = clean.match(new RegExp(name + '\\s*=\\s*\\[([^\\]]*)\\]\\s*;'));
+    if (!m) return null;
+    return m[1].split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+  };
+
+  let v;
+  if ((v = intMatch('ROOF_W')) !== null) cfg.roofW = v;
+  if ((v = intMatch('ROOF_H')) !== null) cfg.roofH = v;
+  if ((v = intMatch('START_Y')) !== null) cfg.startY = v;
+  if ((v = intMatch('X_OFFSET')) !== null) cfg.xOffset = v;
+  if ((v = intMatch('GAP_X')) !== null) cfg.gapX = v;
+  if ((v = intMatch('GAP_Y')) !== null) cfg.gapY = v;
+  if ((v = intMatch('SAFE_ZONE_X')) !== null) cfg.safeZoneX = v;
+
+  v = intArrMatch('RAILS');
+  if (v) cfg.rails = v;
+
+  v = intArrMatch('COLUMN_ORIENTATIONS');
+  if (v && v.length) cfg.columnOrientations = v;
+
+  // OBSTACLES = [[x,y,w,h], ...]
+  const obM = clean.match(/OBSTACLES\s*=\s*\[([\s\S]*?)\]\s*;/);
+  if (obM) {
+    cfg.obstacles = [];
+    const rx = /\[\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(-?\d+)\s*\]/g;
+    for (const mm of obM[1].matchAll(rx)) {
+      cfg.obstacles.push({ x: +mm[1], y: +mm[2], w: +mm[3], h: +mm[4] });
+    }
+  }
+
+  // POLY_OBSTACLES
+  const pM = clean.match(/POLY_OBSTACLES\s*=\s*\[([\s\S]*?)\]\s*;/);
+  if (pM) {
+    cfg.polyObstacles = [];
+    const polyRx = /\[\s*((?:\[\s*-?\d+\s*,\s*-?\d+\s*\]\s*,?\s*)+)\]/g;
+    const vrx = /\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]/g;
+    for (const pmm of pM[1].matchAll(polyRx)) {
+      const verts = [];
+      for (const vmm of pmm[1].matchAll(vrx)) {
+        verts.push([+vmm[1], +vmm[2]]);
+      }
+      if (verts.length >= 3) cfg.polyObstacles.push(verts);
+    }
+  }
+
+  // CATALOG = [[w, h, watts], ...];   SEL = <index>;
+  const cBlock = clean.match(/CATALOG\s*=\s*\[([\s\S]*?)\]\s*;/);
+  if (cBlock) {
+    const triples = [];
+    const trx = /\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/g;
+    for (const mm of cBlock[1].matchAll(trx)) {
+      triples.push({ w: +mm[1], h: +mm[2], watts: +mm[3] });
+    }
+    const sel = intMatch('SEL') ?? 0;
+    const pick = triples[sel] || triples[0];
+    if (pick) {
+      let idx = CATALOG.findIndex(p => p.w === pick.w && p.h === pick.h && p.watts === pick.watts);
+      if (idx < 0) {
+        CATALOG.push({ label: `${pick.watts}W ${pick.w}×${pick.h} (imported)`, ...pick });
+        buildPanelSelect();
+        idx = CATALOG.length - 1;
+      }
+      cfg.panelIdx = idx;
+    }
+  }
+
+  return cfg;
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Toolbar wiring
+// ════════════════════════════════════════════════════════════════════
+document.querySelectorAll('.toolbar button[data-mode]').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.toolbar button[data-mode]').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    mode = b.dataset.mode;
+    drawingPoly = null; drawingPolySide = null;
+    drawingRect = null; drawingRectSide = null;
+    selected = null;
+    document.getElementById('status').textContent =
+      mode === 'select' ? 'Select: drag rails/obstacles/vertices. Click on a side to make it active.' :
+      mode === 'rail'   ? 'Click on roof to add a horizontal rail.' :
+      mode === 'poly'   ? 'Click vertices, then "Close Polygon" / Enter / Shift+Click last to finish.' :
+      mode === 'rect'   ? 'Drag to draw a rectangular obstacle.' : '';
+    render();
+  });
+});
+
+document.getElementById('btn-close-poly').addEventListener('click', () => {
+  if (drawingPoly && drawingPoly.length >= 3) {
+    snapshot();
+    state[drawingPolySide].polyObstacles.push(drawingPoly);
+    drawingPoly = null; drawingPolySide = null;
+    persist(); render();
+  }
+});
+
+document.getElementById('btn-undo').addEventListener('click', undo);
+
+document.getElementById('btn-save').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `solar_layout_${Date.now()}.json`;
+  a.click(); URL.revokeObjectURL(url);
+});
+
+document.getElementById('btn-load').addEventListener('click', () => {
+  document.getElementById('load-input').click();
+});
+document.getElementById('load-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      const obj = JSON.parse(ev.target.result);
+      if (obj.west && obj.east) {
+        snapshot();
+        state = obj;
+      } else {
+        snapshot();
+        state[state.activeSide] = Object.assign(blankCfg(7010, 7190, false), obj);
+      }
+      syncInputs(); buildColList(); buildSideTabs(); render(); persist();
+    } catch (err) { alert('Invalid JSON: ' + err.message); }
+  };
+  r.readAsText(file);
+  e.target.value = '';
+});
+
+document.getElementById('btn-load-scad').addEventListener('click', () => {
+  document.getElementById('load-scad-input').click();
+});
+document.getElementById('load-scad-input').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      const cfg = parseSCAD(ev.target.result);
+      snapshot();
+      state[state.activeSide] = cfg;
+      syncInputs(); buildColList(); render(); persist();
+      const status = document.getElementById('status');
+      status.textContent = `Loaded ${file.name} into ${state.activeSide.toUpperCase()}`;
+    } catch (err) { alert('Failed to parse SCAD: ' + err.message); }
+  };
+  r.readAsText(file);
+  e.target.value = '';
+});
+
+document.getElementById('btn-export-scad').addEventListener('click', () => {
+  const blob = new Blob([genSCAD(state.activeSide)], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${state.activeSide}_layout_${Date.now()}.scad`;
+  a.click(); URL.revokeObjectURL(url);
+});
+
+document.getElementById('btn-copy-scad').addEventListener('click', () => {
+  navigator.clipboard.writeText(genSCAD(state.activeSide)).then(() => {
+    const b = document.getElementById('btn-copy-scad');
+    const old = b.textContent;
+    b.textContent = '✓ Copied';
+    setTimeout(() => { b.textContent = old; }, 1200);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Pointer events
+// ════════════════════════════════════════════════════════════════════
+svg.addEventListener('pointerdown', e => {
+  const p = pointerAuto(e);
+  const cfg = state[p.side];
+
+  // In SELECT/RAIL modes, let users grab an existing rail/obstacle/polygon by
+  // clicking on it. We deliberately skip this in POLY/RECT modes so the user
+  // can start a new shape on top of existing items (otherwise a polygon click
+  // landing on a rail's invisible hit-strip silently fails to drop a vertex).
+  if (mode !== 'poly' && mode !== 'rect') {
+    const tEl = e.target;
+    const tKind = tEl.dataset && tEl.dataset.kind;
+    if (tKind === 'rail' || tKind === 'obstacle' || tKind === 'obstacle-handle' ||
+        tKind === 'poly' || tKind === 'polyVertex') {
+      handleSelectClick(e, p);
+      return;
+    }
+  }
+
+  if (mode === 'rail') {
+    if (p.y >= 0 && p.y <= cfg.roofH) {
+      snapshot();
+      cfg.rails.push(Math.round(p.y));
+      cfg.rails.sort((a, b) => a - b);
+      state.activeSide = p.side;
+      buildSideTabs(); syncInputs(); buildColList();
+      render(); persist();
+    }
+    return;
+  }
+
+  if (mode === 'rect') {
+    drawingRect = { x0: p.x, y0: p.y, x: p.x, y: p.y };
+    drawingRectSide = p.side;
+    state.activeSide = p.side;
+    buildSideTabs(); syncInputs(); buildColList();
+    svg.setPointerCapture(e.pointerId);
+    return;
+  }
+
+  if (mode === 'poly') {
+    if (!drawingPoly) {
+      drawingPoly = [];
+      drawingPolySide = p.side;
+      state.activeSide = p.side;
+      buildSideTabs(); syncInputs(); buildColList();
+    }
+    if (p.side !== drawingPolySide) return;
+    if (e.shiftKey && drawingPoly.length >= 2) {
+      drawingPoly.push([Math.round(p.x), Math.round(p.y)]);
+      if (drawingPoly.length >= 3) {
+        snapshot();
+        state[drawingPolySide].polyObstacles.push(drawingPoly);
+      }
+      drawingPoly = null; drawingPolySide = null;
+      persist(); render();
+      return;
+    }
+    drawingPoly.push([Math.round(p.x), Math.round(p.y)]);
+    render();
+    return;
+  }
+
+  // SELECT mode
+  handleSelectClick(e, p);
+});
+
+function handleSelectClick(e, p) {
+  const t = e.target;
+  const kind = t.dataset && t.dataset.kind;
+  const tSide = t.dataset && t.dataset.side;
+
+  if (kind && tSide) {
+    state.activeSide = tSide;
+    buildSideTabs(); syncInputs(); buildColList();
+  }
+
+  if (kind === 'rail') {
+    const idx = parseInt(t.dataset.idx, 10);
+    selected = { kind: 'rail', side: tSide, idx };
+    snapshot();
+    dragging = { kind: 'rail', side: tSide, idx };
+    svg.setPointerCapture(e.pointerId);
+    render();
+  } else if (kind === 'obstacle') {
+    const idx = parseInt(t.dataset.idx, 10);
+    selected = { kind: 'obstacle', side: tSide, idx };
+    snapshot();
+    dragging = { kind: 'obstacle', side: tSide, idx, startMM: { x: p.x, y: p.y }, orig: { ...state[tSide].obstacles[idx] } };
+    svg.setPointerCapture(e.pointerId);
+    render();
+  } else if (kind === 'obstacle-handle') {
+    const idx = parseInt(t.dataset.idx, 10);
+    snapshot();
+    dragging = { kind: 'obstacle-resize', side: tSide, idx, startMM: { x: p.x, y: p.y }, orig: { ...state[tSide].obstacles[idx] } };
+    svg.setPointerCapture(e.pointerId);
+  } else if (kind === 'polyVertex') {
+    const idx = parseInt(t.dataset.idx, 10);
+    const vidx = parseInt(t.dataset.vidx, 10);
+    selected = { kind: 'poly', side: tSide, idx };
+    snapshot();
+    dragging = { kind: 'polyVertex', side: tSide, idx, vidx };
+    svg.setPointerCapture(e.pointerId);
+    render();
+  } else if (kind === 'poly') {
+    const idx = parseInt(t.dataset.idx, 10);
+    selected = { kind: 'poly', side: tSide, idx };
+    render();
+  } else {
+    state.activeSide = p.side;
+    selected = null;
+    buildSideTabs(); syncInputs(); buildColList();
+    render();
+  }
+}
+
+svg.addEventListener('pointermove', e => {
+  // coord tracker: render below the roof title/info text for the hovered side
+  const ph = pointerAuto(e);
+  const cfgH = state[ph.side];
+  if (ph.x >= 0 && ph.x <= cfgH.roofW && ph.y >= 0 && ph.y <= cfgH.roofH) {
+    updateCoordLabel(ph.side, ph.x, ph.y);
+  } else {
+    hideCoordLabel();
+  }
+  updateCrosshair(e);
+
+  if (!dragging && !drawingRect) return;
+
+  if (dragging) {
+    const p = pointerToSideMM(e, dragging.side);
+    const cfg = state[dragging.side];
+    if (dragging.kind === 'rail') {
+      cfg.rails[dragging.idx] = Math.max(0, Math.min(cfg.roofH, Math.round(p.y)));
+    } else if (dragging.kind === 'obstacle') {
+      const dx = p.x - dragging.startMM.x;
+      const dy = p.y - dragging.startMM.y;
+      cfg.obstacles[dragging.idx].x = Math.round(dragging.orig.x + dx);
+      cfg.obstacles[dragging.idx].y = Math.round(dragging.orig.y + dy);
+    } else if (dragging.kind === 'obstacle-resize') {
+      const o = cfg.obstacles[dragging.idx];
+      const orig = dragging.orig;
+      o.w = Math.max(50, Math.round(p.x - orig.x));
+      o.h = Math.max(50, Math.round(p.y - orig.y));
+    } else if (dragging.kind === 'polyVertex') {
+      cfg.polyObstacles[dragging.idx][dragging.vidx] = [Math.round(p.x), Math.round(p.y)];
+    }
+    render();
+    return;
+  }
+
+  if (drawingRect) {
+    const p = pointerToSideMM(e, drawingRectSide);
+    drawingRect.x = p.x; drawingRect.y = p.y;
+    render();
+  }
+});
+
+svg.addEventListener('pointerup', () => {
+  if (drawingRect) {
+    const r = drawingRect;
+    const x = Math.min(r.x0, r.x), y = Math.min(r.y0, r.y);
+    const w = Math.abs(r.x - r.x0), h = Math.abs(r.y - r.y0);
+    if (w > 50 && h > 50) {
+      snapshot();
+      state[drawingRectSide].obstacles.push({ x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) });
+      persist();
+    }
+    drawingRect = null; drawingRectSide = null;
+    render();
+  }
+  if (dragging) {
+    dragging = null;
+    persist();
+    render();
+  }
+});
+
+svg.addEventListener('dblclick', (e) => {
+  // Rectangle edit: dblclick on an obstacle (or its handle) opens popup
+  const t = e.target;
+  const k = t.dataset && t.dataset.kind;
+  if (k === 'obstacle' || k === 'obstacle-handle') {
+    openRectPopup(t.dataset.side, parseInt(t.dataset.idx, 10), e.clientX, e.clientY);
+    return;
+  }
+  if (mode !== 'poly' || !drawingPoly) return;
+  // The two clicks that produced this dblclick already pushed two vertices.
+  // If the last two are nearly coincident, drop the trailing duplicate.
+  if (drawingPoly.length >= 2) {
+    const a = drawingPoly[drawingPoly.length - 1];
+    const b = drawingPoly[drawingPoly.length - 2];
+    if (Math.hypot(a[0] - b[0], a[1] - b[1]) < 100) drawingPoly.pop();
+  }
+  if (drawingPoly.length >= 3) {
+    snapshot();
+    state[drawingPolySide].polyObstacles.push(drawingPoly);
+  }
+  drawingPoly = null; drawingPolySide = null;
+  persist(); render();
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault();
+    undo();
+    return;
+  }
+  if (e.key === 'Escape') {
+    if (popup.style.display === 'block') { closeRectPopup(); return; }
+    drawingPoly = null; drawingPolySide = null;
+    drawingRect = null; drawingRectSide = null;
+    render(); return;
+  }
+  if (e.key === 'Enter' && mode === 'poly' && drawingPoly && drawingPoly.length >= 3) {
+    snapshot();
+    state[drawingPolySide].polyObstacles.push(drawingPoly);
+    drawingPoly = null; drawingPolySide = null;
+    persist(); render(); return;
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+    snapshot();
+    const cfg = state[selected.side];
+    if (selected.kind === 'rail')     cfg.rails.splice(selected.idx, 1);
+    if (selected.kind === 'obstacle') cfg.obstacles.splice(selected.idx, 1);
+    if (selected.kind === 'poly')     cfg.polyObstacles.splice(selected.idx, 1);
+    selected = null;
+    persist(); render();
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Crosshair (cursor lines spanning both roofs)
+// ════════════════════════════════════════════════════════════════════
+let xhV = null, xhH = null;
+function ensureCrosshair() {
+  // svg gets cleared by render(); re-attach lazily.
+  if (!xhV || xhV.parentNode !== svg) {
+    xhV = svgEl('line', { class: 'crosshair' });
+    xhH = svgEl('line', { class: 'crosshair' });
+    xhV.style.display = 'none'; xhH.style.display = 'none';
+    svg.appendChild(xhV); svg.appendChild(xhH);
+  }
+}
+function updateCrosshair(e) {
+  ensureCrosshair();
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  const m = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const vb = svg.viewBox.baseVal;
+  xhV.setAttribute('x1', m.x); xhV.setAttribute('x2', m.x);
+  xhV.setAttribute('y1', vb.y); xhV.setAttribute('y2', vb.y + vb.height);
+  xhH.setAttribute('x1', vb.x); xhH.setAttribute('x2', vb.x + vb.width);
+  xhH.setAttribute('y1', m.y); xhH.setAttribute('y2', m.y);
+  xhV.style.display = ''; xhH.style.display = '';
+}
+svg.addEventListener('pointerleave', () => {
+  if (xhV) xhV.style.display = 'none';
+  if (xhH) xhH.style.display = 'none';
+  hideCoordLabel();
+});
+
+let coordLabel = null;
+function ensureCoordLabel() {
+  if (!coordLabel || coordLabel.parentNode !== svg) {
+    coordLabel = svgEl('text', { class: 'coord-text' });
+    coordLabel.style.display = 'none';
+    svg.appendChild(coordLabel);
+  }
+}
+function updateCoordLabel(side, x, y) {
+  ensureCoordLabel();
+  const ox = sideOriginX(side);
+  const cfg = state[side];
+  // place just below the roof title block (summary line is at y=-580 in SVG)
+  coordLabel.setAttribute('x', ox);
+  coordLabel.setAttribute('y', -380);
+  coordLabel.textContent = `${side.toUpperCase()} cursor  x=${Math.round(x)}  y=${Math.round(y)}`;
+  coordLabel.style.display = '';
+}
+function hideCoordLabel() {
+  if (coordLabel) coordLabel.style.display = 'none';
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Rectangle edit popup
+// ════════════════════════════════════════════════════════════════════
+let popupTarget = null;  // { side, idx }
+const popup = document.getElementById('rect-popup');
+function openRectPopup(side, idx, clientX, clientY) {
+  popupTarget = { side, idx };
+  const o = state[side].obstacles[idx];
+  document.getElementById('rp-x').value = o.x;
+  document.getElementById('rp-y').value = o.y;
+  document.getElementById('rp-w').value = o.w;
+  document.getElementById('rp-h').value = o.h;
+  const wrap = document.getElementById('canvas-wrap').getBoundingClientRect();
+  popup.style.left = (clientX - wrap.left + 8) + 'px';
+  popup.style.top  = (clientY - wrap.top + 8) + 'px';
+  popup.style.display = 'block';
+  document.getElementById('rp-x').focus();
+}
+function closeRectPopup() {
+  popup.style.display = 'none';
+  popupTarget = null;
+}
+['rp-x', 'rp-y', 'rp-w', 'rp-h'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    if (!popupTarget) return;
+    const o = state[popupTarget.side].obstacles[popupTarget.idx];
+    if (!o) return;
+    const v = parseInt(document.getElementById(id).value, 10);
+    if (isNaN(v)) return;
+    if (id === 'rp-x') o.x = v;
+    if (id === 'rp-y') o.y = v;
+    if (id === 'rp-w') o.w = Math.max(50, v);
+    if (id === 'rp-h') o.h = Math.max(50, v);
+    persist(); render();
+  });
+});
+document.getElementById('rp-close').addEventListener('click', () => { snapshot(); closeRectPopup(); });
+document.getElementById('rp-delete').addEventListener('click', () => {
+  if (!popupTarget) return;
+  snapshot();
+  state[popupTarget.side].obstacles.splice(popupTarget.idx, 1);
+  closeRectPopup(); persist(); render();
+});
+
+// ════════════════════════════════════════════════════════════════════
+// Resizable bars (info bar + SCAD pane)
+// ════════════════════════════════════════════════════════════════════
+function setupResizer(handleId, cssVar, getNewPx, storageKey) {
+  const handle = document.getElementById(handleId);
+  const root = document.documentElement;
+  const saved = parseInt(localStorage.getItem(storageKey), 10);
+  if (!isNaN(saved)) root.style.setProperty(cssVar, saved + 'px');
+  let dragging = false;
+  handle.addEventListener('pointerdown', e => {
+    dragging = true; handle.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const px = Math.max(40, Math.min(window.innerHeight - 100, getNewPx(e)));
+    root.style.setProperty(cssVar, px + 'px');
+    localStorage.setItem(storageKey, String(px));
+  });
+  handle.addEventListener('pointerup', e => {
+    dragging = false; handle.releasePointerCapture(e.pointerId);
+  });
+}
+setupResizer('resizer-top', '--sidebar-h',
+  e => e.clientY - document.querySelector('header').getBoundingClientRect().bottom,
+  'solar-planner-sidebar-h');
+setupResizer('resizer-bot', '--scad-h',
+  e => window.innerHeight - e.clientY,
+  'solar-planner-scad-h');
+
+// ════════════════════════════════════════════════════════════════════
+// Init
+// ════════════════════════════════════════════════════════════════════
+buildPanelSelect();
+buildSideTabs();
+buildColList();
+syncInputs();
+render();
+</script>
+</body>
+</html>

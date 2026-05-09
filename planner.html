@@ -103,15 +103,7 @@ svg.mode-select { cursor: default; }
 
 <aside id="sidebar">
   <div class="sec">
-    <h3>Active side</h3>
-    <div id="side-tabs">
-      <button data-side="east" class="active">East</button>
-      <button data-side="west">West</button>
-    </div>
-  </div>
-
-  <div class="sec">
-    <h3>Roof</h3>
+    <h3 id="hdr-roof">Roof</h3>
     <label><span>W</span><input type="number" id="cfg-roofW"></label>
     <label><span>H</span><input type="number" id="cfg-roofH"></label>
     <label><span>Start Y</span><input type="number" id="cfg-startY"></label>
@@ -120,21 +112,16 @@ svg.mode-select { cursor: default; }
   </div>
 
   <div class="sec">
-    <h3>Panel</h3>
+    <h3 id="hdr-panel">Panel</h3>
     <label><span>Model</span><select id="cfg-panelIdx"></select></label>
     <label><span>Gap X</span><input type="number" id="cfg-gapX"></label>
     <label><span>Gap Y</span><input type="number" id="cfg-gapY"></label>
   </div>
 
   <div class="sec">
-    <h3>Columns (L/P)</h3>
+    <h3 id="hdr-cols">Columns (L/P)</h3>
     <div id="col-list" class="col-list"></div>
     <div class="help">Click to toggle L/P; +/− to add/remove. Last entry repeats.</div>
-  </div>
-
-  <div class="sec">
-    <h3>This side</h3>
-    <div class="summary-stats" id="stats"></div>
   </div>
 
   <div class="sec">
@@ -145,10 +132,11 @@ svg.mode-select { cursor: default; }
   <div class="sec">
     <h3>Help</h3>
     <div class="help">
-      <b>Tabs</b> switch active side (or click on a roof).<br>
+      <b>Active side</b>: click on a roof to make it active. The dimmer
+      outline marks the inactive side. Sidebar inputs apply to the active side.<br>
       <b>+Rail</b>: click on roof.<br>
       <b>Polygon</b>: click vertices, then dbl-click / Enter / Shift+Click / Close button.<br>
-      <b>Rectangle</b>: drag.<br>
+      <b>Rectangle</b>: drag. Double-click an existing rectangle to edit.<br>
       <b>Move/select</b> existing items works in any tool mode.<br>
       <b>Delete</b>: select then Delete. <b>Undo</b>: Ctrl/Cmd+Z. <b>Esc</b>: cancel.
     </div>
@@ -521,11 +509,14 @@ function drawSide(side) {
   }
 
   const p = CATALOG[cfg.panelIdx] || CATALOG[1];
+  const activeMark = isActive ? '  ◀ active' : '';
   svg.appendChild(svgText(ox, -780,
-    `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  (${p.watts}W)`,
+    `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  (${p.watts}W)${activeMark}`,
     'summary-text'));
+  const warn = layout.panels.filter(pp => pp.rc < 2).length;
+  const warnTxt = warn > 0 ? `  ⚠ ${warn} panel(s) <2 rails` : '';
   svg.appendChild(svgText(ox, -580,
-    `${cfg.roofW}×${cfg.roofH}mm  panel ${p.w}×${p.h}  cols ${layout.nc}`,
+    `${cfg.roofW}×${cfg.roofH}mm  panel ${p.w}×${p.h}  cols ${layout.nc}  rails ${cfg.rails.length}${warnTxt}`,
     'summary-line'));
 
   return layout;
@@ -565,9 +556,11 @@ function buildPanelSelect() {
 }
 
 function buildSideTabs() {
-  document.querySelectorAll('#side-tabs button').forEach(b => {
-    b.classList.toggle('active', b.dataset.side === state.activeSide);
-  });
+  // Tabs UI removed — header labels reflect active side instead.
+  const s = state.activeSide.toUpperCase();
+  const r = document.getElementById('hdr-roof');   if (r) r.textContent = `Roof (${s})`;
+  const p = document.getElementById('hdr-panel');  if (p) p.textContent = `Panel (${s})`;
+  const c = document.getElementById('hdr-cols');   if (c) c.textContent = `Columns ${s} (L/P)`;
 }
 
 function buildColList() {
@@ -619,35 +612,6 @@ function syncInputs() {
 }
 
 function updateSidebar(layoutWest, layoutEast) {
-  const layout = state.activeSide === 'west' ? layoutWest : layoutEast;
-  const cfg = active();
-  const stats = document.getElementById('stats');
-  clearChildren(stats);
-  const warnCount = layout.panels.filter(p => p.rc < 2).length;
-
-  const l1 = document.createElement('div');
-  const big1 = document.createElement('span'); big1.className = 'big'; big1.textContent = String(layout.totalP);
-  l1.appendChild(big1);
-  l1.appendChild(document.createTextNode(' panels · '));
-  const big2 = document.createElement('span'); big2.className = 'big';
-  big2.textContent = (layout.totalW / 1000).toFixed(2) + ' kWp';
-  l1.appendChild(big2);
-  stats.appendChild(l1);
-
-  const l2 = document.createElement('div');
-  l2.textContent = `Cols: ${layout.nc}, rails: ${cfg.rails.length}`;
-  stats.appendChild(l2);
-
-  const l3 = document.createElement('div');
-  if (warnCount > 0) {
-    const w = document.createElement('span'); w.className = 'warn';
-    w.textContent = `${warnCount} panel(s) with <2 rails`;
-    l3.appendChild(w);
-  } else {
-    l3.textContent = 'All panels rail-compliant';
-  }
-  stats.appendChild(l3);
-
   const sys = document.getElementById('system-stats');
   clearChildren(sys);
   const totalP = layoutWest.totalP + layoutEast.totalP;
@@ -682,14 +646,6 @@ document.getElementById('cfg-panelIdx').addEventListener('change', e => {
   render(); persist();
 });
 
-document.querySelectorAll('#side-tabs button').forEach(b => {
-  b.addEventListener('click', () => {
-    state.activeSide = b.dataset.side;
-    selected = null;
-    drawingPoly = null; drawingRect = null;
-    buildSideTabs(); syncInputs(); buildColList(); render(); persist();
-  });
-});
 
 // ════════════════════════════════════════════════════════════════════
 // SCAD generation + parsing (uses matchAll, not RegExp.exec)

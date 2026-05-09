@@ -14,6 +14,17 @@ Tools for laying out solar panels on a two-sided pitched roof.
 
 ## Render a SCAD config
 
+The planner is fully self-contained — `planner.html` draws the layout in
+SVG and you do not need OpenSCAD to use it. OpenSCAD is only required
+if you want to render a `.scad` config to PNG (e.g. for a print-ready
+plan):
+
+Install OpenSCAD: <https://openscad.org/downloads.html>
+(macOS: `brew install --cask openscad`. Linux: `apt install openscad`
+or your distro's equivalent.)
+
+Then:
+
 ```sh
 openscad -o out.png --imgsize=2200,3700 \
          --camera=0,0,0,0,0,0,1 --projection=ortho --viewall --autocenter \

@@ -52,8 +52,8 @@ svg.mode-select { cursor: default; }
 .side-label { font-size: 200px; fill: #ccc; font-family: sans-serif; pointer-events: none; font-weight: bold; }
 .side-label.active { fill: #0a7; }
 .summary-text.active { fill: #0a7; }
-.ruler-tick { stroke: #333; stroke-width: 3; pointer-events: none; }
-.ruler-label { font-size: 70px; fill: #333; font-family: monospace; pointer-events: none; }
+.ruler-tick { stroke: #333; stroke-width: 5; pointer-events: none; }
+.ruler-label { font-size: 100px; fill: #333; font-family: monospace; pointer-events: none; }
 .crosshair { stroke: #ff0066; stroke-width: 12; stroke-dasharray: 60,30; pointer-events: none; opacity: 0.9; }
 .coord-text { font-size: 90px; fill: #0a7; font-family: monospace; pointer-events: none; font-weight: bold; }
 #rect-popup { position: absolute; background: white; border: 1px solid #888; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); padding: 8px; z-index: 100; display: none; font-size: 12px; }
@@ -347,7 +347,23 @@ function pointerToSideMM(e, side) {
   const m = pt.matrixTransform(svg.getScreenCTM().inverse());
   const ox = sideOriginX(side);
   const cfg = state[side];
-  return { x: m.x - ox, y: cfg.roofH - m.y };
+  // West roof is mirrored on the X axis: x=0 sits on the visual right edge,
+  // increasing leftward toward the ridge gap.
+  let mmX = m.x - ox;
+  if (side === 'west') mmX = cfg.roofW - mmX;
+  return { x: mmX, y: cfg.roofH - m.y };
+}
+// Canvas X for a roof-coord X (and optional width, used when placing a rect's
+// left edge — for west the rect's left is at roofW-x-w in canvas space).
+function xC(side, mmX, mmW = 0) {
+  const ox = sideOriginX(side);
+  if (side === 'west') return ox + state[side].roofW - mmX - mmW;
+  return ox + mmX;
+}
+function xCcenter(side, mmX) {
+  const ox = sideOriginX(side);
+  if (side === 'west') return ox + state[side].roofW - mmX;
+  return ox + mmX;
 }
 function pointerAuto(e) {
   const pt = svg.createSVGPoint();
@@ -401,16 +417,26 @@ function drawSide(side) {
   }
 
   if (cfg.showRulers) {
+    // Y rulers (vertical edges)
     for (let yMm = 0; yMm <= cfg.roofH; yMm += 100) {
-      const tw = (yMm % 1000 === 0) ? 80 : (yMm % 500 === 0) ? 50 : 25;
+      const tw = (yMm % 1000 === 0) ? 130 : (yMm % 500 === 0) ? 80 : 40;
       svg.appendChild(svgEl('line', { x1: ox - tw / 2, y1: svgY(yMm), x2: ox + tw / 2, y2: svgY(yMm), class: 'ruler-tick' }));
       svg.appendChild(svgEl('line', { x1: ox + cfg.roofW - tw / 2, y1: svgY(yMm), x2: ox + cfg.roofW + tw / 2, y2: svgY(yMm), class: 'ruler-tick' }));
       if (yMm % 1000 === 0) {
         if (side === 'east') {
-          svg.appendChild(svgText(ox - 100, svgY(yMm), (yMm / 1000) + 'm', 'ruler-label', 'end', 'middle'));
+          svg.appendChild(svgText(ox - 130, svgY(yMm), (yMm / 1000) + 'm', 'ruler-label', 'end', 'middle'));
         } else {
-          svg.appendChild(svgText(ox + cfg.roofW + 100, svgY(yMm), (yMm / 1000) + 'm', 'ruler-label', 'start', 'middle'));
+          svg.appendChild(svgText(ox + cfg.roofW + 130, svgY(yMm), (yMm / 1000) + 'm', 'ruler-label', 'start', 'middle'));
         }
+      }
+    }
+    // X rulers (bottom edge). For west, x=0 is on the visual right.
+    for (let xMm = 0; xMm <= cfg.roofW; xMm += 100) {
+      const tw = (xMm % 1000 === 0) ? 130 : (xMm % 500 === 0) ? 80 : 40;
+      const cx = xCcenter(side, xMm);
+      svg.appendChild(svgEl('line', { x1: cx, y1: svgY(0) - tw / 2, x2: cx, y2: svgY(0) + tw / 2, class: 'ruler-tick' }));
+      if (xMm % 1000 === 0) {
+        svg.appendChild(svgText(cx, svgY(0) + 230, (xMm / 1000) + 'm', 'ruler-label', 'middle', 'middle'));
       }
     }
   }
@@ -431,11 +457,12 @@ function drawSide(side) {
 
   layout.panels.forEach(p => {
     const c = (p.rc >= 2) ? COL_COLORS[p.col % COL_COLORS.length] : WARN_COLOR;
+    const px = xC(side, p.x, p.w);
     svg.appendChild(svgEl('rect', {
-      x: ox + p.x, y: svgY(p.y + p.h), width: p.w, height: p.h,
+      x: px, y: svgY(p.y + p.h), width: p.w, height: p.h,
       fill: c, class: 'panel', 'fill-opacity': 0.85
     }));
-    const cx = ox + p.x + p.w / 2, cy = svgY(p.y + p.h / 2);
+    const cx = px + p.w / 2, cy = svgY(p.y + p.h / 2);
     svg.appendChild(svgText(cx, cy - 90, `C${p.col}R${p.row}`, 'panel-label', 'middle', 'middle'));
     svg.appendChild(svgText(cx, cy, p.ori, 'panel-label', 'middle', 'middle'));
     svg.appendChild(svgText(cx, cy + 90, p.watts + 'W', 'panel-label', 'middle', 'middle'));
@@ -443,17 +470,20 @@ function drawSide(side) {
 
   cfg.obstacles.forEach((o, idx) => {
     const isSel = selected && selected.kind === 'obstacle' && selected.side === side && selected.idx === idx;
+    const ox1 = xC(side, o.x, o.w);
     const r = svgEl('rect', {
-      x: ox + o.x, y: svgY(o.y + o.h), width: o.w, height: o.h,
+      x: ox1, y: svgY(o.y + o.h), width: o.w, height: o.h,
       class: 'obstacle-rect',
       stroke: isSel ? '#f80' : '#b00'
     });
     r.dataset.kind = 'obstacle'; r.dataset.idx = idx; r.dataset.side = side;
     svg.appendChild(r);
-    svg.appendChild(svgEl('line', { x1: ox + o.x, y1: svgY(o.y), x2: ox + o.x + o.w, y2: svgY(o.y + o.h), stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
-    svg.appendChild(svgEl('line', { x1: ox + o.x + o.w, y1: svgY(o.y), x2: ox + o.x, y2: svgY(o.y + o.h), stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
+    svg.appendChild(svgEl('line', { x1: ox1, y1: svgY(o.y), x2: ox1 + o.w, y2: svgY(o.y + o.h), stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
+    svg.appendChild(svgEl('line', { x1: ox1 + o.w, y1: svgY(o.y), x2: ox1, y2: svgY(o.y + o.h), stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
+    // Resize handle: visual bottom-right corner of the rendered rect.
+    const handleX = ox1 + o.w - 70;
     const handle = svgEl('rect', {
-      x: ox + o.x + o.w - 70, y: svgY(o.y + o.h) - 70,
+      x: handleX, y: svgY(o.y + o.h) - 70,
       width: 140, height: 140, class: 'obstacle-handle'
     });
     handle.dataset.kind = 'obstacle-handle'; handle.dataset.idx = idx; handle.dataset.side = side;
@@ -461,7 +491,7 @@ function drawSide(side) {
   });
 
   cfg.polyObstacles.forEach((poly, idx) => {
-    const pts = poly.map(p => `${ox + p[0]},${svgY(p[1])}`).join(' ');
+    const pts = poly.map(p => `${xCcenter(side, p[0])},${svgY(p[1])}`).join(' ');
     const isSel = selected && selected.kind === 'poly' && selected.side === side && selected.idx === idx;
     const polyEl = svgEl('polygon', {
       points: pts, class: 'poly-zone',
@@ -471,7 +501,7 @@ function drawSide(side) {
     svg.appendChild(polyEl);
     poly.forEach((v, vi) => {
       const c = svgEl('circle', {
-        cx: ox + v[0], cy: svgY(v[1]), r: 70, class: 'poly-vertex'
+        cx: xCcenter(side, v[0]), cy: svgY(v[1]), r: 70, class: 'poly-vertex'
       });
       c.dataset.kind = 'polyVertex'; c.dataset.idx = idx; c.dataset.vidx = vi; c.dataset.side = side;
       svg.appendChild(c);
@@ -479,14 +509,14 @@ function drawSide(side) {
   });
 
   if (drawingPoly && drawingPolySide === side && drawingPoly.length >= 1) {
-    const pts = drawingPoly.map(p => `${ox + p[0]},${svgY(p[1])}`).join(' ');
+    const pts = drawingPoly.map(p => `${xCcenter(side, p[0])},${svgY(p[1])}`).join(' ');
     if (drawingPoly.length >= 3) {
       svg.appendChild(svgEl('polygon', { points: pts, class: 'poly-preview' }));
     } else {
       svg.appendChild(svgEl('polyline', { points: pts, class: 'poly-preview', fill: 'none' }));
     }
     drawingPoly.forEach(v => {
-      svg.appendChild(svgEl('circle', { cx: ox + v[0], cy: svgY(v[1]), r: 60, fill: '#b00', stroke: 'white', 'stroke-width': 2 }));
+      svg.appendChild(svgEl('circle', { cx: xCcenter(side, v[0]), cy: svgY(v[1]), r: 60, fill: '#b00', stroke: 'white', 'stroke-width': 2 }));
     });
   }
 
@@ -495,18 +525,19 @@ function drawSide(side) {
     const x = Math.min(r.x0, r.x), y = Math.min(r.y0, r.y);
     const w = Math.abs(r.x - r.x0), h = Math.abs(r.y - r.y0);
     svg.appendChild(svgEl('rect', {
-      x: ox + x, y: svgY(y + h), width: w, height: h,
+      x: xC(side, x, w), y: svgY(y + h), width: w, height: h,
       fill: 'rgba(220,30,30,0.3)', stroke: '#b00', 'stroke-width': 5,
       'stroke-dasharray': '30,15', 'pointer-events': 'none'
     }));
   }
 
   if (cfg.safeZoneX > 0 && cfg.safeZoneX < cfg.roofW) {
+    const sx = xCcenter(side, cfg.safeZoneX);
     svg.appendChild(svgEl('line', {
-      x1: ox + cfg.safeZoneX, y1: svgY(cfg.roofH), x2: ox + cfg.safeZoneX, y2: svgY(0),
+      x1: sx, y1: svgY(cfg.roofH), x2: sx, y2: svgY(0),
       class: 'safe-zone-line'
     }));
-    svg.appendChild(svgText(ox + cfg.safeZoneX, svgY(cfg.roofH) - 80,
+    svg.appendChild(svgText(sx, svgY(cfg.roofH) - 80,
       `safe zone ${cfg.safeZoneX / 1000}m`, 'safe-zone-label', 'middle'));
   }
 

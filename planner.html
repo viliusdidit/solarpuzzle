@@ -55,7 +55,7 @@ svg.mode-select { cursor: default; }
 .ruler-tick { stroke: #333; stroke-width: 5; pointer-events: none; }
 .ruler-label { font-size: 100px; fill: #333; font-family: monospace; pointer-events: none; }
 .crosshair { stroke: #ff0066; stroke-width: 12; stroke-dasharray: 60,30; pointer-events: none; opacity: 0.9; }
-.coord-text { font-size: 130px; fill: #0a7; font-family: monospace; pointer-events: none; font-weight: bold; }
+.coord-text { font-size: 170px; fill: #0a7; font-family: monospace; pointer-events: none; font-weight: bold; }
 #rect-popup { position: absolute; background: white; border: 1px solid #888; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); padding: 8px; z-index: 100; display: none; font-size: 12px; }
 #rect-popup label { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
 #rect-popup input { width: 80px; padding: 2px 5px; font-size: 12px; border: 1px solid #ccc; }
@@ -512,7 +512,7 @@ function computeLayout(cfg) {
 const PAD_X = 200;       // left/right padding around roofs
 const PAD_BOTTOM = 600;  // padding below roofs (keep room for ruler labels)
 const PAD_TOP = 200;     // padding above the title block
-const TOPLABEL = 1150;   // space reserved for title + dim line + coord label
+const TOPLABEL = 950;    // space reserved for title + dim line + coord label
 const SIDE_GAP = 800;
 
 function sideOriginX(side) {
@@ -728,12 +728,12 @@ function drawSide(side) {
 
   const p = CATALOG[cfg.panelIdx] || CATALOG[1];
   const activeMark = isActive ? '  ◀ active' : '';
-  svg.appendChild(svgText(ox, -900,
+  svg.appendChild(svgText(ox, -750,
     `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  (${p.watts}W)${activeMark}`,
     'summary-text' + (isActive ? ' active' : '')));
   const warn = layout.panels.filter(pp => pp.rc < 2).length;
   const warnTxt = warn > 0 ? `  ⚠ ${warn} panel(s) <2 rails` : '';
-  svg.appendChild(svgText(ox, -650,
+  svg.appendChild(svgText(ox, -530,
     `${cfg.roofW}×${cfg.roofH}mm  panel ${p.w}×${p.h}  cols ${layout.nc}  rails ${cfg.rails.length}${warnTxt}`,
     'summary-line'));
 
@@ -1373,9 +1373,9 @@ function updateCoordLabel(side, x, y) {
   ensureCoordLabel();
   const ox = sideOriginX(side);
   const cfg = state[side];
-  // place just below the roof title block (summary line is at y=-580 in SVG)
+  // place just below the roof title block (summary line is at y=-530 in SVG)
   coordLabel.setAttribute('x', ox);
-  coordLabel.setAttribute('y', -400);
+  coordLabel.setAttribute('y', -230);
   coordLabel.textContent = `${side.toUpperCase()} cursor  x=${Math.round(x)}  y=${Math.round(y)}`;
   coordLabel.style.display = '';
 }

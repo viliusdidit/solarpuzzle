@@ -47,20 +47,35 @@ svg.mode-select { cursor: default; }
 .poly-preview { fill: rgba(220, 30, 30, 0.18); stroke: #b00; stroke-width: 4; stroke-dasharray: 30,15; pointer-events: none; }
 .safe-zone-line { stroke: #f80; stroke-width: 6; pointer-events: none; }
 .safe-zone-label { font-size: 60px; fill: #f80; pointer-events: none; }
-.summary-text { font-size: 110px; fill: #111; font-family: sans-serif; pointer-events: none; font-weight: bold; }
-.summary-line { font-size: 80px; fill: #444; font-family: sans-serif; pointer-events: none; }
+.summary-text { font-size: 150px; fill: #111; font-family: sans-serif; pointer-events: none; font-weight: bold; }
+.summary-line { font-size: 115px; fill: #444; font-family: sans-serif; pointer-events: none; }
 .side-label { font-size: 200px; fill: #ccc; font-family: sans-serif; pointer-events: none; font-weight: bold; }
 .side-label.active { fill: #0a7; }
 .summary-text.active { fill: #0a7; }
 .ruler-tick { stroke: #333; stroke-width: 5; pointer-events: none; }
 .ruler-label { font-size: 100px; fill: #333; font-family: monospace; pointer-events: none; }
 .crosshair { stroke: #ff0066; stroke-width: 12; stroke-dasharray: 60,30; pointer-events: none; opacity: 0.9; }
-.coord-text { font-size: 90px; fill: #0a7; font-family: monospace; pointer-events: none; font-weight: bold; }
+.coord-text { font-size: 130px; fill: #0a7; font-family: monospace; pointer-events: none; font-weight: bold; }
 #rect-popup { position: absolute; background: white; border: 1px solid #888; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); padding: 8px; z-index: 100; display: none; font-size: 12px; }
 #rect-popup label { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
 #rect-popup input { width: 80px; padding: 2px 5px; font-size: 12px; border: 1px solid #ccc; }
 #rect-popup .row { display: flex; gap: 6px; margin-top: 6px; }
 #rect-popup button { padding: 3px 10px; font-size: 12px; cursor: pointer; }
+#versions-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; display: none; align-items: center; justify-content: center; }
+#versions-modal.open { display: flex; }
+#versions-modal .box { background: white; border-radius: 6px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); width: 640px; max-width: 90vw; max-height: 80vh; display: flex; flex-direction: column; }
+#versions-modal .hdr { display: flex; align-items: center; padding: 10px 14px; border-bottom: 1px solid #ddd; }
+#versions-modal .hdr h3 { margin: 0; flex: 1; font-size: 14px; }
+#versions-modal .body { padding: 10px 14px; overflow-y: auto; flex: 1; font-size: 12px; }
+#versions-modal .body h4 { margin: 12px 0 6px; font-size: 11px; text-transform: uppercase; color: #666; letter-spacing: 0.5px; }
+#versions-modal .body h4:first-child { margin-top: 0; }
+#versions-modal table { width: 100%; border-collapse: collapse; }
+#versions-modal td { padding: 4px 6px; border-bottom: 1px solid #eee; vertical-align: middle; }
+#versions-modal td.name { width: 100%; }
+#versions-modal td.ts { color: #888; white-space: nowrap; font-family: monospace; font-size: 11px; }
+#versions-modal td.act { white-space: nowrap; }
+#versions-modal td.act button { padding: 2px 8px; font-size: 11px; margin-left: 3px; cursor: pointer; }
+#versions-modal .empty { color: #888; font-style: italic; padding: 6px 2px; }
 #scad-preview { background: #1e1e1e; color: #ddd; display: flex; flex-direction: column; overflow: hidden; }
 #scad-preview .header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #2a2a2a; }
 #scad-preview h3 { margin: 0; font-size: 12px; color: #aaa; flex: 1; }
@@ -90,6 +105,9 @@ svg.mode-select { cursor: default; }
   <button id="btn-close-poly" disabled>Close Polygon</button>
   <span class="sep"></span>
   <button id="btn-undo" disabled>Undo</button>
+  <span class="sep"></span>
+  <button id="btn-save-version">Save Version</button>
+  <button id="btn-versions">Versions…</button>
   <span class="sep"></span>
   <button id="btn-save">Save JSON</button>
   <button id="btn-load">Load JSON</button>
@@ -161,6 +179,21 @@ svg.mode-select { cursor: default; }
 </div>
 </div>
 
+<div id="versions-modal">
+  <div class="box">
+    <div class="hdr">
+      <h3>Saved versions & history</h3>
+      <button id="vm-close">Close</button>
+    </div>
+    <div class="body">
+      <h4>Saved versions</h4>
+      <div id="vm-saved"></div>
+      <h4>Auto-history (last 30)</h4>
+      <div id="vm-auto"></div>
+    </div>
+  </div>
+</div>
+
 </main>
 
 <div class="resizer" id="resizer-bot" title="Drag to resize SCAD pane"></div>
@@ -221,13 +254,27 @@ const DEFAULT_STATE = {
 // ════════════════════════════════════════════════════════════════════
 // State + history
 // ════════════════════════════════════════════════════════════════════
+const SCHEMA_VERSION = 1;
+const STATE_KEY = 'solar-planner-state';
+const VERSIONS_KEY = 'solar-planner-versions';
+const AUTOHIST_KEY = 'solar-planner-autohistory';
+const AUTOHIST_MAX = 30;
+
+function migrateLoaded(parsed) {
+  if (parsed && parsed.west && parsed.east) return parsed;
+  if (parsed && parsed.state && parsed.state.west && parsed.state.east) return parsed.state;
+  return null;
+}
+function loadStored(key) {
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
 let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
-const fromLS = localStorage.getItem('solar-planner-state');
-if (fromLS) {
-  try {
-    const obj = JSON.parse(fromLS);
-    if (obj.west && obj.east) state = obj;
-  } catch (e) {}
+{
+  const loaded = migrateLoaded(loadStored(STATE_KEY));
+  if (loaded) state = loaded;
 }
 
 const undoStack = [];
@@ -243,8 +290,146 @@ function undo() {
   document.getElementById('btn-undo').disabled = undoStack.length === 0;
   syncInputs(); buildColList(); buildSideTabs(); render(); persist();
 }
+
+let lastPersistedJson = null;
 function persist() {
-  localStorage.setItem('solar-planner-state', JSON.stringify(state));
+  const json = JSON.stringify(state);
+  localStorage.setItem(STATE_KEY, JSON.stringify({ v: SCHEMA_VERSION, ts: Date.now(), state }));
+  if (json !== lastPersistedJson) {
+    pushAutoHistory(json);
+    lastPersistedJson = json;
+  }
+}
+
+// ── Versioned history ────────────────────────────────────────────────
+function loadVersions() {
+  const arr = loadStored(VERSIONS_KEY);
+  return Array.isArray(arr) ? arr : [];
+}
+function saveVersionsList(arr) { localStorage.setItem(VERSIONS_KEY, JSON.stringify(arr)); }
+function loadAutoHistory() {
+  const arr = loadStored(AUTOHIST_KEY);
+  return Array.isArray(arr) ? arr : [];
+}
+function saveAutoHistoryList(arr) { localStorage.setItem(AUTOHIST_KEY, JSON.stringify(arr)); }
+function pushAutoHistory(stateJson) {
+  const hist = loadAutoHistory();
+  if (hist.length && hist[hist.length - 1].stateJson === stateJson) return;
+  hist.push({ id: 'a' + Date.now() + Math.random().toString(36).slice(2, 6), ts: Date.now(), stateJson });
+  while (hist.length > AUTOHIST_MAX) hist.shift();
+  saveAutoHistoryList(hist);
+}
+function saveNamedVersion(name) {
+  const versions = loadVersions();
+  versions.push({
+    id: 'v' + Date.now() + Math.random().toString(36).slice(2, 6),
+    name: name || new Date().toLocaleString(),
+    ts: Date.now(),
+    v: SCHEMA_VERSION,
+    state: JSON.parse(JSON.stringify(state)),
+  });
+  saveVersionsList(versions);
+}
+function applyState(newState) {
+  snapshot();
+  state = JSON.parse(JSON.stringify(newState));
+  syncInputs(); buildColList(); buildSideTabs(); render(); persist();
+}
+function fmtTs(ts) {
+  const d = new Date(ts);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function mkCell(cls, text) {
+  const td = document.createElement('td');
+  if (cls) td.className = cls;
+  if (text != null) td.textContent = text;
+  return td;
+}
+function mkBtn(label, onClick) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.addEventListener('click', onClick);
+  return b;
+}
+function mkEmpty(text) {
+  const d = document.createElement('div');
+  d.className = 'empty';
+  d.textContent = text;
+  return d;
+}
+function renderVersionsModal() {
+  const savedEl = document.getElementById('vm-saved');
+  const autoEl = document.getElementById('vm-auto');
+  while (savedEl.firstChild) savedEl.removeChild(savedEl.firstChild);
+  while (autoEl.firstChild) autoEl.removeChild(autoEl.firstChild);
+
+  const versions = loadVersions().slice().reverse();
+  if (versions.length === 0) {
+    savedEl.appendChild(mkEmpty('No saved versions yet — use "Save Version".'));
+  } else {
+    const tbl = document.createElement('table');
+    for (const v of versions) {
+      const tr = document.createElement('tr');
+      tr.appendChild(mkCell('name', v.name));
+      tr.appendChild(mkCell('ts', fmtTs(v.ts)));
+      const act = mkCell('act');
+      act.appendChild(mkBtn('Load', () => { applyState(v.state); closeVersionsModal(); }));
+      act.appendChild(mkBtn('Rename', () => {
+        const nn = prompt('New name:', v.name);
+        if (nn == null) return;
+        const all = loadVersions();
+        const f = all.find(x => x.id === v.id);
+        if (f) { f.name = nn.trim() || f.name; saveVersionsList(all); renderVersionsModal(); }
+      }));
+      act.appendChild(mkBtn('Delete', () => {
+        if (!confirm(`Delete version "${v.name}"?`)) return;
+        saveVersionsList(loadVersions().filter(x => x.id !== v.id));
+        renderVersionsModal();
+      }));
+      tr.appendChild(act);
+      tbl.appendChild(tr);
+    }
+    savedEl.appendChild(tbl);
+  }
+
+  const hist = loadAutoHistory().slice().reverse();
+  if (hist.length === 0) {
+    autoEl.appendChild(mkEmpty('No history yet.'));
+  } else {
+    const tbl = document.createElement('table');
+    for (const h of hist) {
+      const tr = document.createElement('tr');
+      tr.appendChild(mkCell('name', 'auto'));
+      tr.appendChild(mkCell('ts', fmtTs(h.ts)));
+      const act = mkCell('act');
+      act.appendChild(mkBtn('Load', () => {
+        try { applyState(JSON.parse(h.stateJson)); closeVersionsModal(); }
+        catch (e) { alert('Corrupt history entry.'); }
+      }));
+      act.appendChild(mkBtn('Save as…', () => {
+        const name = prompt('Name this version:', 'auto ' + fmtTs(h.ts));
+        if (name == null) return;
+        try {
+          const s = JSON.parse(h.stateJson);
+          const versions = loadVersions();
+          versions.push({ id: 'v' + Date.now() + Math.random().toString(36).slice(2,6), name: name.trim() || fmtTs(h.ts), ts: Date.now(), v: SCHEMA_VERSION, state: s });
+          saveVersionsList(versions);
+          renderVersionsModal();
+        } catch (e) { alert('Corrupt history entry.'); }
+      }));
+      tr.appendChild(act);
+      tbl.appendChild(tr);
+    }
+    autoEl.appendChild(tbl);
+  }
+}
+function openVersionsModal() {
+  renderVersionsModal();
+  document.getElementById('versions-modal').classList.add('open');
+}
+function closeVersionsModal() {
+  document.getElementById('versions-modal').classList.remove('open');
 }
 
 function active() { return state[state.activeSide]; }
@@ -327,7 +512,7 @@ function computeLayout(cfg) {
 const PAD_X = 200;       // left/right padding around roofs
 const PAD_BOTTOM = 600;  // padding below roofs (keep room for ruler labels)
 const PAD_TOP = 200;     // padding above the title block
-const TOPLABEL = 900;    // space reserved for title + dim line + coord label
+const TOPLABEL = 1150;   // space reserved for title + dim line + coord label
 const SIDE_GAP = 800;
 
 function sideOriginX(side) {
@@ -543,12 +728,12 @@ function drawSide(side) {
 
   const p = CATALOG[cfg.panelIdx] || CATALOG[1];
   const activeMark = isActive ? '  ◀ active' : '';
-  svg.appendChild(svgText(ox, -780,
+  svg.appendChild(svgText(ox, -900,
     `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  (${p.watts}W)${activeMark}`,
     'summary-text' + (isActive ? ' active' : '')));
   const warn = layout.panels.filter(pp => pp.rc < 2).length;
   const warnTxt = warn > 0 ? `  ⚠ ${warn} panel(s) <2 rails` : '';
-  svg.appendChild(svgText(ox, -580,
+  svg.appendChild(svgText(ox, -650,
     `${cfg.roofW}×${cfg.roofH}mm  panel ${p.w}×${p.h}  cols ${layout.nc}  rails ${cfg.rails.length}${warnTxt}`,
     'summary-line'));
 
@@ -827,6 +1012,18 @@ document.getElementById('btn-close-poly').addEventListener('click', () => {
 });
 
 document.getElementById('btn-undo').addEventListener('click', undo);
+
+document.getElementById('btn-save-version').addEventListener('click', () => {
+  const name = prompt('Name this version:', new Date().toLocaleString());
+  if (name == null) return;
+  saveNamedVersion(name.trim());
+  document.getElementById('status').textContent = `Saved version "${name.trim() || 'untitled'}"`;
+});
+document.getElementById('btn-versions').addEventListener('click', openVersionsModal);
+document.getElementById('vm-close').addEventListener('click', closeVersionsModal);
+document.getElementById('versions-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'versions-modal') closeVersionsModal();
+});
 
 document.getElementById('btn-save').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
@@ -1109,6 +1306,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.key === 'Escape') {
+    if (document.getElementById('versions-modal').classList.contains('open')) { closeVersionsModal(); return; }
     if (popup.style.display === 'block') { closeRectPopup(); return; }
     drawingPoly = null; drawingPolySide = null;
     drawingRect = null; drawingRectSide = null;
@@ -1177,7 +1375,7 @@ function updateCoordLabel(side, x, y) {
   const cfg = state[side];
   // place just below the roof title block (summary line is at y=-580 in SVG)
   coordLabel.setAttribute('x', ox);
-  coordLabel.setAttribute('y', -380);
+  coordLabel.setAttribute('y', -400);
   coordLabel.textContent = `${side.toUpperCase()} cursor  x=${Math.round(x)}  y=${Math.round(y)}`;
   coordLabel.style.display = '';
 }

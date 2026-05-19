@@ -236,9 +236,11 @@ const CATALOG = [
 ];
 
 // Inverters — vMax/vMpptMin/vMpptMax are DC limits, kw is nominal AC
+// SMA STP10.0-3AV-40 datasheet (en-41): MPPT 320–800V, Vmax 1000V, A:20A/2 strings, B:12A/1 string
+// Sigenergy SigenStor EC 17.0TP: MPPT 160–1000V, Vmax 1000V, 16A per input (5–40kW range)
 const INVERTERS = [
-  { label: 'SMA Sunny Tripower 10.0',         kw: 10, vMax: 1000, vMpptMin: 260, vMpptMax: 800 },
-  { label: 'Sigenergy SigenStor EC 17.0TP',   kw: 17, vMax: 1000, vMpptMin: 180, vMpptMax: 850 },
+  { label: 'SMA Sunny Tripower 10.0',         kw: 10, vMax: 1000, vMpptMin: 320, vMpptMax: 800, maxA: 20 },
+  { label: 'Sigenergy SigenStor EC 17.0TP',   kw: 17, vMax: 1000, vMpptMin: 160, vMpptMax: 1000, maxA: 16 },
 ];
 
 const COL_COLORS = ['#3fbf5f', '#e6b022', '#3392e6', '#bf4dcc', '#67c4d4'];

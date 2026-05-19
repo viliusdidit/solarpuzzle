@@ -256,7 +256,6 @@ function blankCfg(roofW, roofH, withVelux) {
     gapX: 10,
     gapY: 10,
     panelIdx: 1,
-    inverterIdx: 0,
     columnOrientations: withVelux ? [1, 0] : [0],
     rowOrientations: [],
     obstacles: withVelux ? [{ x: 4410, y: 2680, w: 830, h: 1010 }] : [],
@@ -270,6 +269,7 @@ const DEFAULT_STATE = {
   west: blankCfg(7010, 7190, false),
   east: blankCfg(6500, 7190, true),
   activeSide: 'east',
+  inverterIdx: 0,
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -288,8 +288,11 @@ function migrateLoaded(parsed) {
   if (!s) return null;
   for (const side of ['east', 'west']) {
     if (!s[side].rowOrientations) s[side].rowOrientations = [];
-    if (s[side].inverterIdx == null) s[side].inverterIdx = 0;
+    // Migrate per-side inverter (old) to shared global; east wins if both set.
+    if (s.inverterIdx == null && s[side].inverterIdx != null) s.inverterIdx = s[side].inverterIdx;
+    delete s[side].inverterIdx;
   }
+  if (s.inverterIdx == null) s.inverterIdx = 0;
   return s;
 }
 function loadStored(key) {
@@ -770,7 +773,7 @@ function drawSide(side) {
   }
 
   const p = CATALOG[cfg.panelIdx] || CATALOG[1];
-  const inv = INVERTERS[cfg.inverterIdx ?? 0] || INVERTERS[0];
+  const inv = INVERTERS[state.inverterIdx ?? 0] || INVERTERS[0];
   const vocSeries = layout.totalP * (p.voc || 0);
   let vRange = '';
   if (vocSeries > 0 && inv) {
@@ -781,7 +784,7 @@ function drawSide(side) {
   }
   const activeMark = isActive ? '  ◀ active' : '';
   svg.appendChild(svgText(ox, -750,
-    `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  ${Math.round(vocSeries)}V${vRange}${activeMark}`,
+    `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  1×${Math.round(vocSeries)}V${vRange}${activeMark}`,
     'summary-text' + (isActive ? ' active' : '')));
   const warn = layout.panels.filter(pp => pp.rc < 2).length;
   const warnTxt = warn > 0 ? `  ⚠ ${warn} panel(s) <2 rails` : '';
@@ -841,7 +844,7 @@ function buildSideTabs() {
   const s = state.activeSide.toUpperCase();
   const r = document.getElementById('hdr-roof');   if (r) r.textContent = `Roof (${s})`;
   const p = document.getElementById('hdr-panel');  if (p) p.textContent = `Panel (${s})`;
-  const iv = document.getElementById('hdr-inverter'); if (iv) iv.textContent = `Inverter (${s})`;
+  const iv = document.getElementById('hdr-inverter'); if (iv) iv.textContent = `Inverter (shared)`;
   const c = document.getElementById('hdr-cols');   if (c) c.textContent = `Columns ${s} (L/P)`;
   const rh = document.getElementById('hdr-rows');  if (rh) rh.textContent = `Rows ${s} (L/P override)`;
 }
@@ -930,7 +933,7 @@ function syncInputs() {
   document.getElementById('cfg-gapX').value = cfg.gapX;
   document.getElementById('cfg-gapY').value = cfg.gapY;
   document.getElementById('cfg-panelIdx').value = cfg.panelIdx;
-  document.getElementById('cfg-inverterIdx').value = cfg.inverterIdx ?? 0;
+  document.getElementById('cfg-inverterIdx').value = state.inverterIdx ?? 0;
 }
 
 function updateSidebar(layoutWest, layoutEast) {
@@ -969,7 +972,7 @@ document.getElementById('cfg-panelIdx').addEventListener('change', e => {
 });
 document.getElementById('cfg-inverterIdx').addEventListener('change', e => {
   snapshot();
-  active().inverterIdx = parseInt(e.target.value, 10);
+  state.inverterIdx = parseInt(e.target.value, 10);
   render(); persist();
 });
 
@@ -1166,8 +1169,10 @@ document.getElementById('load-input').addEventListener('change', e => {
       }
       for (const side of ['east', 'west']) {
         if (!state[side].rowOrientations) state[side].rowOrientations = [];
-        if (state[side].inverterIdx == null) state[side].inverterIdx = 0;
+        if (state.inverterIdx == null && state[side].inverterIdx != null) state.inverterIdx = state[side].inverterIdx;
+        delete state[side].inverterIdx;
       }
+      if (state.inverterIdx == null) state.inverterIdx = 0;
       syncInputs(); buildColList(); buildRowList(); buildSideTabs(); render(); persist();
     } catch (err) { alert('Invalid JSON: ' + err.message); }
   };

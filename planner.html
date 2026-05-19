@@ -139,6 +139,11 @@ svg.mode-select { cursor: default; }
   </div>
 
   <div class="sec">
+    <h3 id="hdr-inverter">Inverter</h3>
+    <label><span>Model</span><select id="cfg-inverterIdx"></select></label>
+  </div>
+
+  <div class="sec">
     <h3 id="hdr-cols">Columns (L/P)</h3>
     <div id="col-list" class="col-list"></div>
     <div class="help">Click to toggle L/P; +/− to add/remove. Last entry repeats.</div>
@@ -221,13 +226,19 @@ svg.mode-select { cursor: default; }
 // Catalog & defaults
 // ════════════════════════════════════════════════════════════════════
 const CATALOG = [
-  { label: '440W 1134×1776 (test)',      w: 1134, h: 1776, watts: 440 },
-  { label: '460W 1134×1722 (Path B)',    w: 1134, h: 1722, watts: 460 },
-  { label: '440W 1086×1808 (Path A)',    w: 1086, h: 1808, watts: 440 },
-  { label: 'Jinko 420W 1134×1722',       w: 1134, h: 1722, watts: 420 },
-  { label: 'CECEP 405W 1134×1722',       w: 1134, h: 1722, watts: 405 },
-  { label: 'Trina 440W 1134×1762',       w: 1134, h: 1762, watts: 440 },
-  { label: 'Hyundai 455W 1134×1762',     w: 1134, h: 1762, watts: 455 },
+  { label: '440W 1134×1776 (test)',      w: 1134, h: 1776, watts: 440, voc: 40.5 },
+  { label: '460W 1134×1722 (Path B)',    w: 1134, h: 1722, watts: 460, voc: 41.5 },
+  { label: '440W 1086×1808 (Path A)',    w: 1086, h: 1808, watts: 440, voc: 40.5 },
+  { label: 'Jinko 420W 1134×1722',       w: 1134, h: 1722, watts: 420, voc: 38.5 },
+  { label: 'CECEP 405W 1134×1722',       w: 1134, h: 1722, watts: 405, voc: 37.5 },
+  { label: 'Trina 440W 1134×1762',       w: 1134, h: 1762, watts: 440, voc: 40.5 },
+  { label: 'Hyundai 455W 1134×1762',     w: 1134, h: 1762, watts: 455, voc: 41.0 },
+];
+
+// Inverters — vMax/vMpptMin/vMpptMax are DC limits, kw is nominal AC
+const INVERTERS = [
+  { label: 'SMA Sunny Tripower 10.0',         kw: 10, vMax: 1000, vMpptMin: 260, vMpptMax: 800 },
+  { label: 'Sigenergy SigenStor EC 17.0TP',   kw: 17, vMax: 1000, vMpptMin: 180, vMpptMax: 850 },
 ];
 
 const COL_COLORS = ['#3fbf5f', '#e6b022', '#3392e6', '#bf4dcc', '#67c4d4'];
@@ -243,6 +254,7 @@ function blankCfg(roofW, roofH, withVelux) {
     gapX: 10,
     gapY: 10,
     panelIdx: 1,
+    inverterIdx: 0,
     columnOrientations: withVelux ? [1, 0] : [0],
     rowOrientations: [],
     obstacles: withVelux ? [{ x: 4410, y: 2680, w: 830, h: 1010 }] : [],
@@ -274,6 +286,7 @@ function migrateLoaded(parsed) {
   if (!s) return null;
   for (const side of ['east', 'west']) {
     if (!s[side].rowOrientations) s[side].rowOrientations = [];
+    if (s[side].inverterIdx == null) s[side].inverterIdx = 0;
   }
   return s;
 }
@@ -755,14 +768,23 @@ function drawSide(side) {
   }
 
   const p = CATALOG[cfg.panelIdx] || CATALOG[1];
+  const inv = INVERTERS[cfg.inverterIdx ?? 0] || INVERTERS[0];
+  const vocSeries = layout.totalP * (p.voc || 0);
+  let vRange = '';
+  if (vocSeries > 0 && inv) {
+    if (vocSeries > inv.vMax) vRange = ` ⚠ >Vmax ${inv.vMax}V`;
+    else if (vocSeries > inv.vMpptMax) vRange = ` ⚠ >MPPT ${inv.vMpptMax}V`;
+    else if (vocSeries < inv.vMpptMin) vRange = ` ⚠ <MPPT ${inv.vMpptMin}V`;
+    else vRange = ' ✓';
+  }
   const activeMark = isActive ? '  ◀ active' : '';
   svg.appendChild(svgText(ox, -750,
-    `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  (${p.watts}W)${activeMark}`,
+    `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  ${Math.round(vocSeries)}V${vRange}${activeMark}`,
     'summary-text' + (isActive ? ' active' : '')));
   const warn = layout.panels.filter(pp => pp.rc < 2).length;
   const warnTxt = warn > 0 ? `  ⚠ ${warn} panel(s) <2 rails` : '';
   svg.appendChild(svgText(ox, -530,
-    `${cfg.roofW}×${cfg.roofH}mm  panel ${p.w}×${p.h}  cols ${layout.nc}  rails ${cfg.rails.length}${warnTxt}`,
+    `${cfg.roofW}×${cfg.roofH}mm  panel ${p.w}×${p.h} ${p.watts}W  cols ${layout.nc}  rails ${cfg.rails.length}  inv ${inv.label.split(' ')[0]} ${inv.kw}kW${warnTxt}`,
     'summary-line'));
 
   return layout;
@@ -801,11 +823,23 @@ function buildPanelSelect() {
   });
 }
 
+function buildInverterSelect() {
+  const sel = document.getElementById('cfg-inverterIdx');
+  clearChildren(sel);
+  INVERTERS.forEach((inv, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = `${inv.label} — ${inv.kw}kW`;
+    sel.appendChild(opt);
+  });
+}
+
 function buildSideTabs() {
   // Tabs UI removed — header labels reflect active side instead.
   const s = state.activeSide.toUpperCase();
   const r = document.getElementById('hdr-roof');   if (r) r.textContent = `Roof (${s})`;
   const p = document.getElementById('hdr-panel');  if (p) p.textContent = `Panel (${s})`;
+  const iv = document.getElementById('hdr-inverter'); if (iv) iv.textContent = `Inverter (${s})`;
   const c = document.getElementById('hdr-cols');   if (c) c.textContent = `Columns ${s} (L/P)`;
   const rh = document.getElementById('hdr-rows');  if (rh) rh.textContent = `Rows ${s} (L/P override)`;
 }
@@ -894,6 +928,7 @@ function syncInputs() {
   document.getElementById('cfg-gapX').value = cfg.gapX;
   document.getElementById('cfg-gapY').value = cfg.gapY;
   document.getElementById('cfg-panelIdx').value = cfg.panelIdx;
+  document.getElementById('cfg-inverterIdx').value = cfg.inverterIdx ?? 0;
 }
 
 function updateSidebar(layoutWest, layoutEast) {
@@ -928,6 +963,11 @@ function updateSidebar(layoutWest, layoutEast) {
 document.getElementById('cfg-panelIdx').addEventListener('change', e => {
   snapshot();
   active().panelIdx = parseInt(e.target.value, 10);
+  render(); persist();
+});
+document.getElementById('cfg-inverterIdx').addEventListener('change', e => {
+  snapshot();
+  active().inverterIdx = parseInt(e.target.value, 10);
   render(); persist();
 });
 
@@ -1124,6 +1164,7 @@ document.getElementById('load-input').addEventListener('change', e => {
       }
       for (const side of ['east', 'west']) {
         if (!state[side].rowOrientations) state[side].rowOrientations = [];
+        if (state[side].inverterIdx == null) state[side].inverterIdx = 0;
       }
       syncInputs(); buildColList(); buildRowList(); buildSideTabs(); render(); persist();
     } catch (err) { alert('Invalid JSON: ' + err.message); }
@@ -1536,6 +1577,7 @@ setupResizer('resizer-bot', '--scad-h',
 // Init
 // ════════════════════════════════════════════════════════════════════
 buildPanelSelect();
+buildInverterSelect();
 buildSideTabs();
 buildColList();
 buildRowList();

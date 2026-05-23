@@ -40,11 +40,11 @@ svg.mode-select { cursor: default; }
 .zone-label { font-size: 70px; fill: #888; pointer-events: none; }
 .panel { stroke: #111; stroke-width: 4; cursor: pointer; }
 .panel-label { font-size: 65px; fill: #111; pointer-events: none; font-family: sans-serif; }
-.obstacle-rect { fill: rgba(220, 30, 30, 0.35); stroke: #b00; stroke-width: 5; cursor: move; }
-.obstacle-handle { fill: #b00; stroke: white; stroke-width: 2; cursor: nwse-resize; }
-.poly-zone { fill: rgba(220, 30, 30, 0.30); stroke: #b00; stroke-width: 5; cursor: move; }
-.poly-vertex { fill: #b00; stroke: white; stroke-width: 2; cursor: move; }
-.poly-preview { fill: rgba(220, 30, 30, 0.18); stroke: #b00; stroke-width: 4; stroke-dasharray: 30,15; pointer-events: none; }
+.obstacle-rect { fill: rgba(80, 80, 80, 0.35); stroke: #555; stroke-width: 5; cursor: move; }
+.obstacle-handle { fill: #555; stroke: white; stroke-width: 2; cursor: nwse-resize; }
+.poly-zone { fill: rgba(80, 80, 80, 0.30); stroke: #555; stroke-width: 5; cursor: move; }
+.poly-vertex { fill: #555; stroke: white; stroke-width: 2; cursor: move; }
+.poly-preview { fill: rgba(80, 80, 80, 0.18); stroke: #555; stroke-width: 4; stroke-dasharray: 30,15; pointer-events: none; }
 .safe-zone-line { stroke: #f80; stroke-width: 6; pointer-events: none; }
 .safe-zone-label { font-size: 60px; fill: #f80; pointer-events: none; }
 .summary-text { font-size: 150px; fill: #111; font-family: sans-serif; pointer-events: none; font-weight: bold; }
@@ -707,7 +707,7 @@ function drawSide(side) {
     const r = svgEl('rect', {
       x: ox1, y: svgY(o.y + o.h), width: o.w, height: o.h,
       class: 'obstacle-rect',
-      stroke: isSel ? '#f80' : '#b00'
+      stroke: isSel ? '#f80' : '#555'
     });
     r.dataset.kind = 'obstacle'; r.dataset.idx = idx; r.dataset.side = side;
     svg.appendChild(r);
@@ -728,7 +728,7 @@ function drawSide(side) {
     const isSel = selected && selected.kind === 'poly' && selected.side === side && selected.idx === idx;
     const polyEl = svgEl('polygon', {
       points: pts, class: 'poly-zone',
-      stroke: isSel ? '#f80' : '#b00'
+      stroke: isSel ? '#f80' : '#555'
     });
     polyEl.dataset.kind = 'poly'; polyEl.dataset.idx = idx; polyEl.dataset.side = side;
     svg.appendChild(polyEl);
@@ -749,7 +749,7 @@ function drawSide(side) {
       svg.appendChild(svgEl('polyline', { points: pts, class: 'poly-preview', fill: 'none' }));
     }
     drawingPoly.forEach(v => {
-      svg.appendChild(svgEl('circle', { cx: xCcenter(side, v[0]), cy: svgY(v[1]), r: 60, fill: '#b00', stroke: 'white', 'stroke-width': 2 }));
+      svg.appendChild(svgEl('circle', { cx: xCcenter(side, v[0]), cy: svgY(v[1]), r: 60, fill: '#555', stroke: 'white', 'stroke-width': 2 }));
     });
   }
 
@@ -759,7 +759,7 @@ function drawSide(side) {
     const w = Math.abs(r.x - r.x0), h = Math.abs(r.y - r.y0);
     svg.appendChild(svgEl('rect', {
       x: xC(side, x, w), y: svgY(y + h), width: w, height: h,
-      fill: 'rgba(220,30,30,0.3)', stroke: '#b00', 'stroke-width': 5,
+      fill: 'rgba(80,80,80,0.3)', stroke: '#555', 'stroke-width': 5,
       'stroke-dasharray': '30,15', 'pointer-events': 'none'
     }));
   }

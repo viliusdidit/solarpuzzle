@@ -1,0 +1,36 @@
+{
+  "east": {
+    "roofW": 7550,
+    "roofH": 3600,
+    "startY": 200,
+    "xOffset": 0,
+    "rails": [400, 1500, 1900, 3000],
+    "gapX": 10,
+    "gapY": 10,
+    "panelIdx": 1,
+    "columnOrientations": [0],
+    "rowOrientations": [],
+    "obstacles": [],
+    "polyObstacles": [],
+    "safeZoneX": 0,
+    "showRulers": true
+  },
+  "west": {
+    "roofW": 1000,
+    "roofH": 1000,
+    "startY": 0,
+    "xOffset": 0,
+    "rails": [],
+    "gapX": 10,
+    "gapY": 10,
+    "panelIdx": 1,
+    "columnOrientations": [0],
+    "rowOrientations": [],
+    "obstacles": [],
+    "polyObstacles": [],
+    "safeZoneX": 0,
+    "showRulers": true
+  },
+  "activeSide": "east",
+  "inverterIdx": 0
+}

@@ -1,0 +1,106 @@
+{
+  "west": {
+    "roofW": 7010,
+    "roofH": 7190,
+    "startY": 100,
+    "xOffset": 0,
+    "rails": [
+      370,
+      1430,
+      2230,
+      3020,
+      3740,
+      4810,
+      5490,
+      6510
+    ],
+    "gapX": 10,
+    "gapY": 10,
+    "panelIdx": 1,
+    "columnOrientations": [
+      1,
+      1,
+      1,
+      1,
+      0
+    ],
+    "obstacles": [
+      {
+        "x": 3467,
+        "y": 2548,
+        "w": 689,
+        "h": 944
+      },
+      {
+        "x": 5613,
+        "y": 3646,
+        "w": 1371,
+        "h": 641
+      },
+      {
+        "x": 5752,
+        "y": 1632,
+        "w": 900,
+        "h": 1976
+      }
+    ],
+    "polyObstacles": [
+      [
+        [
+          4552,
+          29
+        ],
+        [
+          6972,
+          5
+        ],
+        [
+          5780,
+          1590
+        ]
+      ]
+    ],
+    "safeZoneX": 3470,
+    "showRulers": true,
+    "rowOrientations": []
+  },
+  "east": {
+    "roofW": 6700,
+    "roofH": 7190,
+    "startY": 100,
+    "xOffset": 200,
+    "rails": [
+      610,
+      1460,
+      2160,
+      3200,
+      3900,
+      4690,
+      5410,
+      6490
+    ],
+    "gapX": 10,
+    "gapY": 10,
+    "panelIdx": 5,
+    "columnOrientations": [
+      1,
+      0,
+      0,
+      0
+    ],
+    "obstacles": [
+      {
+        "x": 4399,
+        "y": 2556,
+        "w": 609,
+        "h": 959
+      }
+    ],
+    "polyObstacles": [],
+    "safeZoneX": 4410,
+    "showRulers": true,
+    "rowOrientations": []
+  },
+  "activeSide": "east",
+  "inverterIdx": 0
+}

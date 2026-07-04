@@ -2,17 +2,17 @@
   "west": {
     "roofW": 7010,
     "roofH": 7190,
-    "startY": 100,
+    "startY": 180,
     "xOffset": 0,
     "rails": [
-      370,
-      1430,
-      2230,
-      3020,
-      3740,
-      4810,
-      5490,
-      6510
+      437,
+      1469,
+      2169,
+      3201,
+      3901,
+      4933,
+      5633,
+      6665
     ],
     "gapX": 10,
     "gapY": 10,
@@ -62,22 +62,34 @@
     ],
     "safeZoneX": 3470,
     "showRulers": true,
-    "rowOrientations": []
+    "rowOrientations": [],
+    "oldRails": [
+      680,
+      1700,
+      2380,
+      3450,
+      4170,
+      4960,
+      5760,
+      6820
+    ],
+    "anchorTop": true,
+    "autoRails": true
   },
   "east": {
     "roofW": 6700,
     "roofH": 7190,
-    "startY": 100,
+    "startY": 180,
     "xOffset": 200,
     "rails": [
-      610,
-      1460,
-      2160,
-      3200,
-      3900,
-      4690,
-      5410,
-      6490
+      437,
+      1469,
+      2169,
+      3201,
+      3901,
+      4933,
+      5633,
+      6665
     ],
     "gapX": 10,
     "gapY": 10,
@@ -99,7 +111,19 @@
     "polyObstacles": [],
     "safeZoneX": 4410,
     "showRulers": true,
-    "rowOrientations": []
+    "rowOrientations": [],
+    "oldRails": [
+      700,
+      1780,
+      2500,
+      3290,
+      3990,
+      5030,
+      5730,
+      6580
+    ],
+    "anchorTop": true,
+    "autoRails": true
   },
   "activeSide": "east",
   "inverterIdx": 0

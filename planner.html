@@ -31,9 +31,11 @@ main { display: grid; grid-template-rows: var(--sidebar-h, 110px) 6px 1fr; overf
 #canvas-wrap { background: #ddd; overflow: hidden; position: relative; }
 svg { width: 100%; height: 100%; display: block; cursor: crosshair; user-select: none; }
 svg.mode-select { cursor: default; }
-.rail { stroke: #1672e0; stroke-width: 4; cursor: ns-resize; }
+.rail { stroke: #00897b; stroke-width: 4; cursor: ns-resize; }
+.rail-band { stroke-opacity: 0.3; pointer-events: none; }
+.rail-old { stroke: #888; stroke-width: 40; stroke-dasharray: 100 70; stroke-opacity: 0.6; pointer-events: none; }
 .rail-hit { stroke: transparent; stroke-width: 30; cursor: ns-resize; }
-.rail-label { font-size: 60px; fill: #1672e0; font-family: monospace; pointer-events: none; }
+.rail-label { font-size: 60px; fill: #00897b; font-family: monospace; pointer-events: none; }
 .roof-outline { fill: white; stroke: #0a7; stroke-width: 10; }
 .roof-outline.inactive { stroke: #888; stroke-width: 6; }
 .roof-zone-below { fill: #d8d8d8; pointer-events: none; }
@@ -128,6 +130,7 @@ svg.mode-select { cursor: default; }
     <h3 id="hdr-roof">Roof</h3>
     <label><span>W</span><input type="number" id="cfg-roofW"></label>
     <label><span>H</span><input type="number" id="cfg-roofH"></label>
+    <label><span>Anchor</span><select id="cfg-anchorTop"><option value="0">bottom (eave)</option><option value="1">top (ridge)</option></select></label>
     <label><span>Start Y</span><input type="number" id="cfg-startY"></label>
     <label><span>X off</span><input type="number" id="cfg-xOffset"></label>
     <label><span>Safe X</span><input type="number" id="cfg-safeZoneX"></label>
@@ -138,6 +141,7 @@ svg.mode-select { cursor: default; }
     <label><span>Model</span><select id="cfg-panelIdx"></select></label>
     <label><span>Gap X</span><input type="number" id="cfg-gapX"></label>
     <label><span>Gap Y</span><input type="number" id="cfg-gapY"></label>
+    <label><span>Auto rails</span><select id="cfg-autoRails"><option value="0">off</option><option value="1">on</option></select></label>
   </div>
 
   <div class="sec">
@@ -167,7 +171,8 @@ svg.mode-select { cursor: default; }
     <div class="help">
       <b>Active side</b>: click on a roof to make it active. The dimmer
       outline marks the inactive side. Sidebar inputs apply to the active side.<br>
-      <b>+Rail</b>: click on roof.<br>
+      <b>+Rail</b>: click on roof. Teal bands = planned rails (real 40mm width);
+      grey dashed bands = old rails (<code>oldRails</code> in config, display-only).<br>
       <b>Polygon</b>: click vertices, then dbl-click / Enter / Shift+Click / Close button.<br>
       <b>Rectangle</b>: drag. Double-click an existing rectangle to edit.<br>
       <b>Move/select</b> existing items works in any tool mode.<br>
@@ -225,6 +230,151 @@ svg.mode-select { cursor: default; }
 "use strict";
 
 // ════════════════════════════════════════════════════════════════════
+// i18n — ?lang=lt (or #…&lang=lt) switches the UI to Lithuanian
+// ════════════════════════════════════════════════════════════════════
+const LANG = ((/[?&#]lang=([a-z]{2})/.exec(location.search + location.hash) || [])[1] === 'lt') ? 'lt' : 'en';
+const LT = {
+  'Select': 'Žymėti',
+  '+ Rail': '+ Bėgelis',
+  'Draw Polygon': 'Piešti daugiakampį',
+  'Draw Rectangle': 'Piešti stačiakampį',
+  'Close Polygon': 'Uždaryti daugiakampį',
+  'Undo': 'Atšaukti',
+  'Save Version': 'Išsaugoti versiją',
+  'Versions…': 'Versijos…',
+  'Save JSON': 'Išsaugoti JSON',
+  'Load JSON': 'Įkelti JSON',
+  'Upload .scad': 'Įkelti .scad',
+  'Export .scad': 'Eksportuoti .scad',
+  'Share link': 'Dalintis nuoroda',
+  'Ready': 'Paruošta',
+  'Roof': 'Stogas',
+  'Panel': 'Modulis',
+  'Inverter (shared)': 'Inverteris (bendras)',
+  'Columns': 'Stulpeliai',
+  'Rows': 'Eilės',
+  '(L/P override)': '(L/P perrašymas)',
+  'System total': 'Sistemos suma',
+  'Help': 'Pagalba',
+  'Start Y': 'Pradžia Y',
+  'X off': 'X postūmis',
+  'Safe X': 'Saugi X',
+  'Model': 'Modelis',
+  'Gap X': 'Tarpas X',
+  'Gap Y': 'Tarpas Y',
+  'panels': 'moduliai',
+  'panel': 'modulis',
+  'panel(s) <2 rails': 'modulis(-iai) <2 bėgelių',
+  'cols': 'stulp.',
+  'rails': 'bėgeliai',
+  'active': 'aktyvi',
+  'safe zone': 'saugi zona',
+  'no panels below': 'modulių nėra žemiau',
+  'no panels above': 'modulių nėra aukščiau',
+  'Anchor': 'Atskaita',
+  'Auto rails': 'Auto bėgeliai',
+  'off': 'išjungta',
+  'on': 'įjungta',
+  'bottom (eave)': 'apačia (karnizas)',
+  'top (ridge)': 'viršus (kraigas)',
+  'cursor': 'žymeklis',
+  'West': 'Vakarai',
+  'East': 'Rytai',
+  'Load': 'Įkelti',
+  'Rename': 'Pervadinti',
+  'Delete': 'Trinti',
+  'Close': 'Uždaryti',
+  'Copy': 'Kopijuoti',
+  'New name:': 'Naujas pavadinimas:',
+  'No saved versions yet — use "Save Version".': 'Išsaugotų versijų dar nėra — spauskite „Išsaugoti versiją“.',
+  'No history yet.': 'Istorijos dar nėra.',
+  'Saved versions & history': 'Išsaugotos versijos ir istorija',
+  'Saved versions': 'Išsaugotos versijos',
+  'Auto-history (last 30)': 'Auto istorija (paskutinės 30)',
+  'SCAD output (active side)': 'SCAD išvestis (aktyvi pusė)',
+  '✓ Copied': '✓ Nukopijuota',
+  '✓ Link copied': '✓ Nuoroda nukopijuota',
+  'Copy share link:': 'Nukopijuokite nuorodą:',
+  'Share link ready': 'Nuoroda paruošta',
+  'chars': 'simb.',
+  'Saved version': 'Išsaugota versija',
+  'Loaded': 'Įkelta',
+  'Loaded shared plan from link — edit or Save JSON to keep it':
+    'Planas įkeltas iš nuorodos — redaguokite arba išsaugokite JSON, kad liktų',
+  'Select: drag rails/obstacles/vertices. Click on a side to make it active.':
+    'Žymėti: tempkite bėgelius/kliūtis/viršūnes. Spustelėkite pusę, kad ji taptų aktyvi.',
+  'Click on roof to add a horizontal rail.':
+    'Spustelėkite ant stogo, kad pridėtumėte horizontalų bėgelį.',
+  'Click vertices, then "Close Polygon" / Enter / Shift+Click last to finish.':
+    'Spauskite viršūnes, pabaigai — „Uždaryti daugiakampį“ / Enter / Shift+paspaudimas.',
+  'Drag to draw a rectangular obstacle.':
+    'Tempkite, kad nubrėžtumėte stačiakampę kliūtį.',
+  'Delete version': 'Trinti versiją',
+};
+function t(s) { return (LANG === 'lt' && LT[s]) || s; }
+function tSide(side) { return LANG === 'lt' ? (side === 'east' ? 'RYTAI' : 'VAKARAI') : side.toUpperCase(); }
+// Lithuanian numeral agreement: 21 modulis / 3 moduliai / 18 moduliu
+function tPanels(n) {
+  if (LANG !== 'lt') return n === 1 ? 'panel' : 'panels';
+  const d = n % 10, dd = n % 100;
+  if (d === 1 && dd !== 11) return 'modulis';
+  if (d >= 2 && d <= 9 && !(dd >= 11 && dd <= 19)) return 'moduliai';
+  return 'modulių';
+}
+
+function applyStaticLang() {
+  if (LANG !== 'lt') return;
+  document.querySelectorAll('.toolbar button').forEach(b => { b.textContent = t(b.textContent.trim()); });
+  document.getElementById('status').textContent = t('Ready');
+  const anchorSel = document.getElementById('cfg-anchorTop');
+  if (anchorSel) {
+    anchorSel.previousElementSibling.textContent = t('Anchor');
+    anchorSel.options[0].textContent = t('bottom (eave)');
+    anchorSel.options[1].textContent = t('top (ridge)');
+  }
+  const autoSel = document.getElementById('cfg-autoRails');
+  if (autoSel) {
+    autoSel.previousElementSibling.textContent = t('Auto rails');
+    autoSel.options[0].textContent = t('off');
+    autoSel.options[1].textContent = t('on');
+  }
+  const sideLabels = { 'cfg-startY': 'Start Y', 'cfg-xOffset': 'X off', 'cfg-safeZoneX': 'Safe X',
+                       'cfg-gapX': 'Gap X', 'cfg-gapY': 'Gap Y', 'cfg-panelIdx': 'Model', 'cfg-inverterIdx': 'Model' };
+  for (const [id, key] of Object.entries(sideLabels)) {
+    const el = document.getElementById(id);
+    if (el && el.previousElementSibling) el.previousElementSibling.textContent = t(key);
+  }
+  document.querySelectorAll('aside .sec > h3').forEach(h => {
+    if (h.textContent === 'System total') h.textContent = t('System total');
+    if (h.textContent === 'Help') h.textContent = t('Help');
+  });
+  const help = document.querySelector('.sec:last-child .help');
+  if (help) help.innerHTML =
+    '<b>Aktyvi pusė</b>: spustelėkite stogą, kad jis taptų aktyvus. Blankesnis kontūras — neaktyvi pusė. Šoninės juostos laukai galioja aktyviai pusei.<br>' +
+    '<b>+Bėgelis</b>: spustelėkite ant stogo. Žalsvos juostos = planuojami bėgeliai (tikras 40mm plotis); pilkos brūkšninės = seni bėgeliai (<code>oldRails</code> konfigūracijoje, tik rodymui).<br>' +
+    '<b>Daugiakampis</b>: spauskite viršūnes, tada dvigubas paspaudimas / Enter / Shift+paspaudimas / mygtukas.<br>' +
+    '<b>Stačiakampis</b>: tempkite. Dvigubas paspaudimas ant esamo — redagavimas.<br>' +
+    '<b>Perkelti/žymėti</b> veikia bet kuriuo įrankiu.<br>' +
+    '<b>Trinti</b>: pažymėkite ir Delete. <b>Atšaukti</b>: Ctrl/Cmd+Z. <b>Esc</b>: nutraukti.';
+  const colHelp = document.querySelector('#col-list + .help');
+  if (colHelp) colHelp.textContent = 'Spustelėkite L/P perjungimui; +/− pridėti/pašalinti. Paskutinis įrašas kartojasi.';
+  const rowHelp = document.querySelector('#row-list + .help');
+  if (rowHelp) rowHelp.textContent = 'Nebūtinas eilės L/P perrašymas. Tuščia = be perrašymo.';
+  const vmHdr = document.querySelector('#versions-modal .hdr h3');
+  if (vmHdr) vmHdr.textContent = t('Saved versions & history');
+  document.getElementById('vm-close').textContent = t('Close');
+  const vmH4 = document.querySelectorAll('#versions-modal .body h4');
+  if (vmH4[0]) vmH4[0].textContent = t('Saved versions');
+  if (vmH4[1]) vmH4[1].textContent = t('Auto-history (last 30)');
+  const scadH = document.querySelector('#scad-preview .header h3');
+  if (scadH) scadH.textContent = t('SCAD output (active side)');
+  document.getElementById('btn-copy-scad').textContent = t('Copy');
+  document.getElementById('rp-close').textContent = t('Close');
+  document.getElementById('rp-delete').textContent = t('Delete');
+  document.documentElement.lang = 'lt';
+}
+
+// ════════════════════════════════════════════════════════════════════
 // Catalog & defaults
 // ════════════════════════════════════════════════════════════════════
 const CATALOG = [
@@ -256,14 +406,18 @@ const INVERTERS = [
 
 const COL_COLORS = ['#3fbf5f', '#e6b022', '#3392e6', '#bf4dcc', '#67c4d4'];
 const WARN_COLOR = '#e63333';
+const RAIL_W = 40; // physical rail profile width, mm
 
 function blankCfg(roofW, roofH, withVelux) {
   return {
     roofW: roofW,
     roofH: roofH,
     startY: 230,
+    anchorTop: false,   // false: startY offsets from eave (bottom); true: from ridge (top)
+    autoRails: false,   // true: rails derived from panel rows each render (snap to oldRails when legal)
     xOffset: withVelux ? 200 : 0,
     rails: [600, 1600, 2300, 3000, 3700, 4700, 5400, 6100],
+    oldRails: [],
     gapX: 10,
     gapY: 10,
     panelIdx: 1,
@@ -299,6 +453,9 @@ function migrateLoaded(parsed) {
   if (!s) return null;
   for (const side of ['east', 'west']) {
     if (!s[side].rowOrientations) s[side].rowOrientations = [];
+    if (!s[side].oldRails) s[side].oldRails = [];
+    if (s[side].anchorTop == null) s[side].anchorTop = false;
+    if (s[side].autoRails == null) s[side].autoRails = false;
     // Migrate per-side inverter (old) to shared global; east wins if both set.
     if (s.inverterIdx == null && s[side].inverterIdx != null) s.inverterIdx = s[side].inverterIdx;
     delete s[side].inverterIdx;
@@ -328,6 +485,9 @@ function decodePlan(s) {
 function normalizeState(s) {
   for (const side of ['east', 'west']) {
     if (s[side] && !s[side].rowOrientations) s[side].rowOrientations = [];
+    if (s[side] && !s[side].oldRails) s[side].oldRails = [];
+    if (s[side] && s[side].anchorTop == null) s[side].anchorTop = false;
+    if (s[side] && s[side].autoRails == null) s[side].autoRails = false;
     if (s.inverterIdx == null && s[side] && s[side].inverterIdx != null) s.inverterIdx = s[side].inverterIdx;
     if (s[side]) delete s[side].inverterIdx;
   }
@@ -338,6 +498,17 @@ function readPlanFromHash() {
   const m = (location.hash || '').match(/[#&]plan=([^&]+)/);
   return m ? decodePlan(m[1]) : null;
 }
+// Pasting a share link into an already-open tab only changes the hash and
+// does not reload the page — apply the new plan live.
+window.addEventListener('hashchange', () => {
+  const shared = readPlanFromHash();
+  if (!shared) return;
+  state = normalizeState(shared);
+  loadedFromShare = true;
+  selected = null;
+  if (typeof buildRowList === 'function') buildRowList();
+  syncInputs(); render();
+});
 
 let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
 let loadedFromShare = false;
@@ -441,7 +612,7 @@ function renderVersionsModal() {
 
   const versions = loadVersions().slice().reverse();
   if (versions.length === 0) {
-    savedEl.appendChild(mkEmpty('No saved versions yet — use "Save Version".'));
+    savedEl.appendChild(mkEmpty(t('No saved versions yet — use "Save Version".')));
   } else {
     const tbl = document.createElement('table');
     for (const v of versions) {
@@ -449,16 +620,16 @@ function renderVersionsModal() {
       tr.appendChild(mkCell('name', v.name));
       tr.appendChild(mkCell('ts', fmtTs(v.ts)));
       const act = mkCell('act');
-      act.appendChild(mkBtn('Load', () => { applyState(v.state); closeVersionsModal(); }));
-      act.appendChild(mkBtn('Rename', () => {
-        const nn = prompt('New name:', v.name);
+      act.appendChild(mkBtn(t('Load'), () => { applyState(v.state); closeVersionsModal(); }));
+      act.appendChild(mkBtn(t('Rename'), () => {
+        const nn = prompt(t('New name:'), v.name);
         if (nn == null) return;
         const all = loadVersions();
         const f = all.find(x => x.id === v.id);
         if (f) { f.name = nn.trim() || f.name; saveVersionsList(all); renderVersionsModal(); }
       }));
-      act.appendChild(mkBtn('Delete', () => {
-        if (!confirm(`Delete version "${v.name}"?`)) return;
+      act.appendChild(mkBtn(t('Delete'), () => {
+        if (!confirm(`${t('Delete version')} "${v.name}"?`)) return;
         saveVersionsList(loadVersions().filter(x => x.id !== v.id));
         renderVersionsModal();
       }));
@@ -470,7 +641,7 @@ function renderVersionsModal() {
 
   const hist = loadAutoHistory().slice().reverse();
   if (hist.length === 0) {
-    autoEl.appendChild(mkEmpty('No history yet.'));
+    autoEl.appendChild(mkEmpty(t('No history yet.')));
   } else {
     const tbl = document.createElement('table');
     for (const h of hist) {
@@ -478,7 +649,7 @@ function renderVersionsModal() {
       tr.appendChild(mkCell('name', 'auto'));
       tr.appendChild(mkCell('ts', fmtTs(h.ts)));
       const act = mkCell('act');
-      act.appendChild(mkBtn('Load', () => {
+      act.appendChild(mkBtn(t('Load'), () => {
         try { applyState(JSON.parse(h.stateJson)); closeVersionsModal(); }
         catch (e) { alert('Corrupt history entry.'); }
       }));
@@ -578,23 +749,64 @@ function computeLayout(cfg) {
   const panels = [];
   for (let col = 0; col < nc; col++) {
     const cx = colX(cfg, col, p);
-    let py = cfg.startY;
     let row = 0;
-    while (row < 100) {
-      const cw = pwR(cfg, col, row, p);
-      const chh = phR(cfg, col, row, p);
-      if (py + chh > cfg.roofH) break;
-      if (!overlapsObstacle(cfg, cx, py, cw, chh)) {
-        const rc = railCount(cfg, py, chh);
-        const oriCh = effOri(cfg, col, row) === 1 ? 'L' : 'P';
-        panels.push({ col, row, x: cx, y: py, w: cw, h: chh, ori: oriCh, rc, watts: p.watts });
+    if (cfg.anchorTop) {
+      // Rows fill downward from the ridge; row 0 is the TOP row.
+      let topY = cfg.roofH - cfg.startY;
+      while (row < 100) {
+        const cw = pwR(cfg, col, row, p);
+        const chh = phR(cfg, col, row, p);
+        const py = topY - chh;
+        if (py < 0) break;
+        if (!overlapsObstacle(cfg, cx, py, cw, chh)) {
+          const rc = railCount(cfg, py, chh);
+          const oriCh = effOri(cfg, col, row) === 1 ? 'L' : 'P';
+          panels.push({ col, row, x: cx, y: py, w: cw, h: chh, ori: oriCh, rc, watts: p.watts });
+        }
+        topY = py - cfg.gapY;
+        row++;
       }
-      py += chh + cfg.gapY;
-      row++;
+    } else {
+      let py = cfg.startY;
+      while (row < 100) {
+        const cw = pwR(cfg, col, row, p);
+        const chh = phR(cfg, col, row, p);
+        if (py + chh > cfg.roofH) break;
+        if (!overlapsObstacle(cfg, cx, py, cw, chh)) {
+          const rc = railCount(cfg, py, chh);
+          const oriCh = effOri(cfg, col, row) === 1 ? 'L' : 'P';
+          panels.push({ col, row, x: cx, y: py, w: cw, h: chh, ori: oriCh, rc, watts: p.watts });
+        }
+        py += chh + cfg.gapY;
+        row++;
+      }
     }
   }
   const totalW = panels.reduce((s, x) => s + x.watts, 0);
   return { panels, nc, totalP: panels.length, totalW, panelDim: p };
+}
+
+// Derive rail positions from panel rows (Aiko clamp zones): portrait rows are
+// clamped on the long frame (295-395mm from edge, mid 345), landscape rows on
+// the short frame (100-240mm, mid 170). If an oldRail falls inside the legal
+// window, snap to it so the existing rail can be reused.
+function computeAutoRails(cfg, layout) {
+  const ZONE = { P: [295, 395, 345], L: [100, 240, 170] };
+  const bands = new Map();
+  layout.panels.forEach(pp => bands.set(pp.y + ':' + pp.h + ':' + pp.ori, pp));
+  const rails = new Set();
+  for (const pp of bands.values()) {
+    const [minD, maxD, defD] = ZONE[pp.ori] || ZONE.P;
+    for (const [lo, hi, def] of [
+      [pp.y + minD, pp.y + maxD, pp.y + defD],
+      [pp.y + pp.h - maxD, pp.y + pp.h - minD, pp.y + pp.h - defD],
+    ]) {
+      const candidates = (cfg.oldRails || []).filter(r => r >= lo && r <= hi);
+      const snap = candidates.sort((a, b) => Math.abs(a - def) - Math.abs(b - def))[0];
+      rails.add(snap != null ? snap : def);
+    }
+  }
+  return [...rails].sort((a, b) => a - b);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -672,11 +884,16 @@ function drawSide(side) {
   const cfg = state[side];
   const ox = sideOriginX(side);
   const isActive = side === state.activeSide;
-  const layout = computeLayout(cfg);
+  let layout = computeLayout(cfg);
+  if (cfg.autoRails) {
+    // Rails follow the panel rows; re-run layout so rail-count flags see them.
+    cfg.rails = computeAutoRails(cfg, layout);
+    layout = computeLayout(cfg);
+  }
   const svgY = (y) => cfg.roofH - y;
 
   svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(0) + 380,
-    side.toUpperCase(), 'side-label' + (isActive ? ' active' : ''), 'middle'));
+    tSide(side), 'side-label' + (isActive ? ' active' : ''), 'middle'));
 
   svg.appendChild(svgEl('rect', {
     x: ox, y: svgY(cfg.roofH), width: cfg.roofW, height: cfg.roofH,
@@ -684,12 +901,21 @@ function drawSide(side) {
   }));
 
   if (cfg.startY > 0) {
-    svg.appendChild(svgEl('rect', {
-      x: ox, y: svgY(cfg.startY), width: cfg.roofW, height: cfg.startY,
-      class: 'roof-zone-below'
-    }));
-    svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(cfg.startY / 2),
-      `no panels below ${cfg.startY}mm`, 'zone-label', 'middle', 'middle'));
+    if (cfg.anchorTop) {
+      svg.appendChild(svgEl('rect', {
+        x: ox, y: svgY(cfg.roofH), width: cfg.roofW, height: cfg.startY,
+        class: 'roof-zone-below'
+      }));
+      svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(cfg.roofH - cfg.startY / 2),
+        `${t('no panels above')} ${cfg.startY}mm`, 'zone-label', 'middle', 'middle'));
+    } else {
+      svg.appendChild(svgEl('rect', {
+        x: ox, y: svgY(cfg.startY), width: cfg.roofW, height: cfg.startY,
+        class: 'roof-zone-below'
+      }));
+      svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(cfg.startY / 2),
+        `${t('no panels below')} ${cfg.startY}mm`, 'zone-label', 'middle', 'middle'));
+    }
   }
 
   if (cfg.showRulers) {
@@ -717,6 +943,13 @@ function drawSide(side) {
     }
   }
 
+  // Old (dismantled/previous) rails: dashed grey bands at physical rail width.
+  (cfg.oldRails || []).forEach(r => {
+    svg.appendChild(svgEl('line', {
+      x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r), class: 'rail-old'
+    }));
+  });
+
   cfg.rails.forEach((r, idx) => {
     const hit = svgEl('line', {
       x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r), class: 'rail-hit'
@@ -724,10 +957,16 @@ function drawSide(side) {
     hit.dataset.kind = 'rail'; hit.dataset.idx = idx; hit.dataset.side = side;
     svg.appendChild(hit);
     const isSel = selected && selected.kind === 'rail' && selected.side === side && selected.idx === idx;
+    // Physical rail width (40mm profile) as translucent band + crisp centerline.
+    svg.appendChild(svgEl('line', {
+      x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r),
+      class: 'rail-band', 'stroke-width': RAIL_W,
+      stroke: isSel ? '#f80' : '#00897b'
+    }));
     svg.appendChild(svgEl('line', {
       x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r),
       class: 'rail',
-      stroke: isSel ? '#f80' : '#1672e0'
+      stroke: isSel ? '#f80' : '#00897b'
     }));
   });
 
@@ -814,7 +1053,7 @@ function drawSide(side) {
       class: 'safe-zone-line'
     }));
     svg.appendChild(svgText(sx, svgY(cfg.roofH) - 80,
-      `safe zone ${cfg.safeZoneX / 1000}m`, 'safe-zone-label', 'middle'));
+      `${t('safe zone')} ${cfg.safeZoneX / 1000}m`, 'safe-zone-label', 'middle'));
   }
 
   const p = CATALOG[cfg.panelIdx] || CATALOG[1];
@@ -828,14 +1067,14 @@ function drawSide(side) {
     else if (vmpSeries < inv.vMpptMin) vRange = ` ⚠ <MPPT ${inv.vMpptMin}V`;  // Vmp vs MPPT bottom
     else vRange = ' ✓';
   }
-  const activeMark = isActive ? '  ◀ active' : '';
+  const activeMark = isActive ? `  ◀ ${t('active')}` : '';
   svg.appendChild(svgText(ox, -750,
-    `${side.toUpperCase()}: ${layout.totalP} panels  ${(layout.totalW/1000).toFixed(2)} kWp  1×${Math.round(vocSeries)}V${vRange}${activeMark}`,
+    `${tSide(side)}: ${layout.totalP} ${tPanels(layout.totalP)}  ${(layout.totalW/1000).toFixed(2)} kWp  1×${Math.round(vocSeries)}V${vRange}${activeMark}`,
     'summary-text' + (isActive ? ' active' : '')));
   const warn = layout.panels.filter(pp => pp.rc < 2).length;
-  const warnTxt = warn > 0 ? `  ⚠ ${warn} panel(s) <2 rails` : '';
+  const warnTxt = warn > 0 ? `  ⚠ ${warn} ${t('panel(s) <2 rails')}` : '';
   svg.appendChild(svgText(ox, -530,
-    `${cfg.roofW}×${cfg.roofH}mm  panel ${p.w}×${p.h} ${p.watts}W  cols ${layout.nc}  rails ${cfg.rails.length}  inv ${inv.label.split(' ')[0]} ${inv.kw}kW${warnTxt}`,
+    `${cfg.roofW}×${cfg.roofH}mm  ${t('panel')} ${p.w}×${p.h} ${p.watts}W  ${t('cols')} ${layout.nc}  ${t('rails')} ${cfg.rails.length}  inv ${inv.label.split(' ')[0]} ${inv.kw}kW${warnTxt}`,
     'summary-line'));
 
   return layout;
@@ -887,12 +1126,12 @@ function buildInverterSelect() {
 
 function buildSideTabs() {
   // Tabs UI removed — header labels reflect active side instead.
-  const s = state.activeSide.toUpperCase();
-  const r = document.getElementById('hdr-roof');   if (r) r.textContent = `Roof (${s})`;
-  const p = document.getElementById('hdr-panel');  if (p) p.textContent = `Panel (${s})`;
-  const iv = document.getElementById('hdr-inverter'); if (iv) iv.textContent = `Inverter (shared)`;
-  const c = document.getElementById('hdr-cols');   if (c) c.textContent = `Columns ${s} (L/P)`;
-  const rh = document.getElementById('hdr-rows');  if (rh) rh.textContent = `Rows ${s} (L/P override)`;
+  const s = tSide(state.activeSide);
+  const r = document.getElementById('hdr-roof');   if (r) r.textContent = `${t('Roof')} (${s})`;
+  const p = document.getElementById('hdr-panel');  if (p) p.textContent = `${t('Panel')} (${s})`;
+  const iv = document.getElementById('hdr-inverter'); if (iv) iv.textContent = t('Inverter (shared)');
+  const c = document.getElementById('hdr-cols');   if (c) c.textContent = `${t('Columns')} ${s} (L/P)`;
+  const rh = document.getElementById('hdr-rows');  if (rh) rh.textContent = `${t('Rows')} ${s} ${t('(L/P override)')}`;
 }
 
 function buildColList() {
@@ -974,6 +1213,8 @@ function syncInputs() {
   document.getElementById('cfg-roofW').value = cfg.roofW;
   document.getElementById('cfg-roofH').value = cfg.roofH;
   document.getElementById('cfg-startY').value = cfg.startY;
+  document.getElementById('cfg-anchorTop').value = cfg.anchorTop ? '1' : '0';
+  document.getElementById('cfg-autoRails').value = cfg.autoRails ? '1' : '0';
   document.getElementById('cfg-xOffset').value = cfg.xOffset;
   document.getElementById('cfg-safeZoneX').value = cfg.safeZoneX;
   document.getElementById('cfg-gapX').value = cfg.gapX;
@@ -990,15 +1231,27 @@ function updateSidebar(layoutWest, layoutEast) {
   const sl1 = document.createElement('div');
   const sb1 = document.createElement('span'); sb1.className = 'big'; sb1.textContent = String(totalP);
   sl1.appendChild(sb1);
-  sl1.appendChild(document.createTextNode(' panels · '));
+  sl1.appendChild(document.createTextNode(` ${tPanels(totalP)} · `));
   const sb2 = document.createElement('span'); sb2.className = 'big';
   sb2.textContent = (totalW / 1000).toFixed(2) + ' kWp';
   sl1.appendChild(sb2);
   sys.appendChild(sl1);
   const sl2 = document.createElement('div');
-  sl2.textContent = `West ${layoutWest.totalP}p + East ${layoutEast.totalP}p`;
+  sl2.textContent = `${t('West')} ${layoutWest.totalP}p + ${t('East')} ${layoutEast.totalP}p`;
   sys.appendChild(sl2);
 }
+
+document.getElementById('cfg-anchorTop').addEventListener('change', () => {
+  snapshot();
+  active().anchorTop = document.getElementById('cfg-anchorTop').value === '1';
+  persist(); render();
+});
+
+document.getElementById('cfg-autoRails').addEventListener('change', () => {
+  snapshot();
+  active().autoRails = document.getElementById('cfg-autoRails').value === '1';
+  persist(); render();
+});
 
 ['roofW', 'roofH', 'startY', 'xOffset', 'safeZoneX', 'gapX', 'gapY'].forEach(k => {
   const el = document.getElementById('cfg-' + k);
@@ -1157,10 +1410,10 @@ document.querySelectorAll('.toolbar button[data-mode]').forEach(b => {
     drawingRect = null; drawingRectSide = null;
     selected = null;
     document.getElementById('status').textContent =
-      mode === 'select' ? 'Select: drag rails/obstacles/vertices. Click on a side to make it active.' :
-      mode === 'rail'   ? 'Click on roof to add a horizontal rail.' :
-      mode === 'poly'   ? 'Click vertices, then "Close Polygon" / Enter / Shift+Click last to finish.' :
-      mode === 'rect'   ? 'Drag to draw a rectangular obstacle.' : '';
+      mode === 'select' ? t('Select: drag rails/obstacles/vertices. Click on a side to make it active.') :
+      mode === 'rail'   ? t('Click on roof to add a horizontal rail.') :
+      mode === 'poly'   ? t('Click vertices, then "Close Polygon" / Enter / Shift+Click last to finish.') :
+      mode === 'rect'   ? t('Drag to draw a rectangular obstacle.') : '';
     render();
   });
 });
@@ -1180,7 +1433,7 @@ document.getElementById('btn-save-version').addEventListener('click', () => {
   const name = prompt('Name this version:', new Date().toLocaleString());
   if (name == null) return;
   saveNamedVersion(name.trim());
-  document.getElementById('status').textContent = `Saved version "${name.trim() || 'untitled'}"`;
+  document.getElementById('status').textContent = `${t('Saved version')} "${name.trim() || 'untitled'}"`;
 });
 document.getElementById('btn-versions').addEventListener('click', openVersionsModal);
 document.getElementById('vm-close').addEventListener('click', closeVersionsModal);
@@ -1240,7 +1493,7 @@ document.getElementById('load-scad-input').addEventListener('change', e => {
       state[state.activeSide] = cfg;
       syncInputs(); buildColList(); buildRowList(); render(); persist();
       const status = document.getElementById('status');
-      status.textContent = `Loaded ${file.name} into ${state.activeSide.toUpperCase()}`;
+      status.textContent = `${t('Loaded')} ${file.name} → ${tSide(state.activeSide)}`;
     } catch (err) { alert('Failed to parse SCAD: ' + err.message); }
   };
   r.readAsText(file);
@@ -1259,24 +1512,25 @@ document.getElementById('btn-copy-scad').addEventListener('click', () => {
   navigator.clipboard.writeText(genSCAD(state.activeSide)).then(() => {
     const b = document.getElementById('btn-copy-scad');
     const old = b.textContent;
-    b.textContent = '✓ Copied';
+    b.textContent = t('✓ Copied');
     setTimeout(() => { b.textContent = old; }, 1200);
   });
 });
 
 document.getElementById('btn-share').addEventListener('click', () => {
   const encoded = encodePlan(state);
-  const url = location.origin + location.pathname + '#plan=' + encoded;
+  // Keep ?lang=… (and any other query params) so the shared link opens in the same language.
+  const url = location.origin + location.pathname + location.search + '#plan=' + encoded;
   history.replaceState(null, '', '#plan=' + encoded);   // reflect in address bar, no history spam
   const b = document.getElementById('btn-share');
   const old = b.textContent;
   const done = (m) => { b.textContent = m; setTimeout(() => { b.textContent = old; }, 1400); };
   if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(url).then(() => done('✓ Link copied')).catch(() => window.prompt('Copy share link:', url));
+    navigator.clipboard.writeText(url).then(() => done(t('✓ Link copied'))).catch(() => window.prompt(t('Copy share link:'), url));
   } else {
-    window.prompt('Copy share link:', url);   // clipboard needs https; fall back to manual copy
+    window.prompt(t('Copy share link:'), url);   // clipboard needs https; fall back to manual copy
   }
-  document.getElementById('status').textContent = `Share link ready — ${url.length} chars`;
+  document.getElementById('status').textContent = `${t('Share link ready')} — ${url.length} ${t('chars')}`;
 });
 
 // ════════════════════════════════════════════════════════════════════
@@ -1560,7 +1814,7 @@ function updateCoordLabel(side, x, y) {
   // place just below the roof title block (summary line is at y=-530 in SVG)
   coordLabel.setAttribute('x', ox);
   coordLabel.setAttribute('y', -230);
-  coordLabel.textContent = `${side.toUpperCase()} cursor  x=${Math.round(x)}  y=${Math.round(y)}`;
+  coordLabel.textContent = `${tSide(side)} ${t('cursor')}  x=${Math.round(x)}  y=${Math.round(y)}`;
   coordLabel.style.display = '';
 }
 function hideCoordLabel() {
@@ -1644,6 +1898,7 @@ setupResizer('resizer-bot', '--scad-h',
 // ════════════════════════════════════════════════════════════════════
 // Init
 // ════════════════════════════════════════════════════════════════════
+applyStaticLang();
 buildPanelSelect();
 buildInverterSelect();
 buildSideTabs();
@@ -1652,7 +1907,7 @@ buildRowList();
 syncInputs();
 render();
 if (loadedFromShare) {
-  document.getElementById('status').textContent = 'Loaded shared plan from link — edit or Save JSON to keep it';
+  document.getElementById('status').textContent = t('Loaded shared plan from link — edit or Save JSON to keep it');
 }
 </script>
 </body>

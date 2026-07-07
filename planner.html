@@ -56,6 +56,8 @@ svg.mode-select { cursor: default; }
 .summary-text.active { fill: #0a7; }
 .ruler-tick { stroke: #333; stroke-width: 5; pointer-events: none; }
 .ruler-label { font-size: 100px; fill: #333; font-family: monospace; pointer-events: none; }
+.rail-delta { font-size: 80px; font-family: monospace; pointer-events: none; }
+.clamp-zone { fill: #1b5e20; fill-opacity: 0.22; pointer-events: none; }
 .crosshair { stroke: #ff0066; stroke-width: 12; stroke-dasharray: 60,30; pointer-events: none; opacity: 0.9; }
 .coord-text { font-size: 170px; fill: #0a7; font-family: monospace; pointer-events: none; font-weight: bold; }
 #rect-popup { position: absolute; background: white; border: 1px solid #888; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); padding: 8px; z-index: 100; display: none; font-size: 12px; }
@@ -234,6 +236,8 @@ svg.mode-select { cursor: default; }
 // ════════════════════════════════════════════════════════════════════
 const LANG = ((/[?&#]lang=([a-z]{2})/.exec(location.search + location.hash) || [])[1] === 'lt') ? 'lt' : 'en';
 const LT = {
+  'Share link is corrupt — showing your saved plan instead.':
+    'Dalinimosi nuoroda sugadinta — rodomas jūsų išsaugotas planas.',
   'Select': 'Žymėti',
   '+ Rail': '+ Bėgelis',
   'Draw Polygon': 'Piešti daugiakampį',
@@ -414,13 +418,13 @@ function blankCfg(roofW, roofH, withVelux) {
     roofH: roofH,
     startY: 230,
     anchorTop: false,   // false: startY offsets from eave (bottom); true: from ridge (top)
-    autoRails: false,   // true: rails derived from panel rows each render (snap to oldRails when legal)
+    autoRails: true,    // rails derived from panel rows each render (snap to oldRails when legal)
     xOffset: withVelux ? 200 : 0,
     rails: [600, 1600, 2300, 3000, 3700, 4700, 5400, 6100],
     oldRails: [],
     gapX: 10,
     gapY: 10,
-    panelIdx: 1,
+    panelIdx: 12,       // Aiko A465-MAH54Mb
     columnOrientations: withVelux ? [1, 0] : [0],
     rowOrientations: [],
     obstacles: withVelux ? [{ x: 4410, y: 2680, w: 830, h: 1010 }] : [],
@@ -431,8 +435,11 @@ function blankCfg(roofW, roofH, withVelux) {
 }
 
 const DEFAULT_STATE = {
-  west: Object.assign(blankCfg(7010, 7190, false), { panelIdx: 11 }), // Jinko 48QL6-DB 465W
-  east: Object.assign(blankCfg(6500, 7190, true),  { panelIdx: 11 }), // Jinko 48QL6-DB 465W
+  // oldRails = measured existing construction (mm from eave, 2026-07-03)
+  west: Object.assign(blankCfg(7010, 7190, false), { panelIdx: 12,
+    oldRails: [680, 1700, 2380, 3450, 4170, 4960, 5760, 6820] }),
+  east: Object.assign(blankCfg(6500, 7190, true),  { panelIdx: 12,
+    oldRails: [700, 1780, 2500, 3290, 3990, 5030, 5730, 6580] }),
   activeSide: 'east',
   inverterIdx: 0,
 };
@@ -496,7 +503,12 @@ function normalizeState(s) {
 }
 function readPlanFromHash() {
   const m = (location.hash || '').match(/[#&]plan=([^&]+)/);
-  return m ? decodePlan(m[1]) : null;
+  if (!m) return null;
+  const plan = decodePlan(m[1]);
+  // A corrupt link silently falling back to defaults/localStorage is very
+  // confusing — the viewer thinks they are looking at the shared plan.
+  if (!plan) alert(t('Share link is corrupt — showing your saved plan instead.'));
+  return plan;
 }
 // Pasting a share link into an already-open tab only changes the hash and
 // does not reload the page — apply the new plan live.
@@ -743,12 +755,24 @@ function overlapsObstacle(cfg, x, y, w, h) {
   for (const o of cfg.obstacles) if (rectsOverlap(x, y, w, h, o.x, o.y, o.w, o.h)) return true;
   return panelInAnyPoly(cfg, x, y, w, h);
 }
+// Row-aware column x: a row overridden to another orientation repacks with
+// its own panel widths (portrait row in landscape columns packs tighter, and
+// a landscape override on portrait columns doesn't overlap its neighbor).
+function colXRow(cfg, col, row, p) {
+  let x = 0;
+  for (let i = 0; i < col; i++) x += pwR(cfg, i, row, p) + cfg.gapX;
+  return cfg.xOffset + x;
+}
+
 function computeLayout(cfg) {
   const p = CATALOG[cfg.panelIdx] || CATALOG[1];
-  const nc = ncols(cfg, p);
+  // Upper bound on columns: narrowest orientation; rows that don't fit a
+  // column are skipped individually below.
+  const minW = Math.min(p.w, p.h);
+  let ncMax = 0;
+  while (ncMax < 30 && cfg.xOffset + ncMax * (minW + cfg.gapX) + minW <= cfg.roofW) ncMax++;
   const panels = [];
-  for (let col = 0; col < nc; col++) {
-    const cx = colX(cfg, col, p);
+  for (let col = 0; col < ncMax; col++) {
     let row = 0;
     if (cfg.anchorTop) {
       // Rows fill downward from the ridge; row 0 is the TOP row.
@@ -756,9 +780,10 @@ function computeLayout(cfg) {
       while (row < 100) {
         const cw = pwR(cfg, col, row, p);
         const chh = phR(cfg, col, row, p);
+        const cx = colXRow(cfg, col, row, p);
         const py = topY - chh;
         if (py < 0) break;
-        if (!overlapsObstacle(cfg, cx, py, cw, chh)) {
+        if (cx + cw <= cfg.roofW && !overlapsObstacle(cfg, cx, py, cw, chh)) {
           const rc = railCount(cfg, py, chh);
           const oriCh = effOri(cfg, col, row) === 1 ? 'L' : 'P';
           panels.push({ col, row, x: cx, y: py, w: cw, h: chh, ori: oriCh, rc, watts: p.watts });
@@ -771,8 +796,9 @@ function computeLayout(cfg) {
       while (row < 100) {
         const cw = pwR(cfg, col, row, p);
         const chh = phR(cfg, col, row, p);
+        const cx = colXRow(cfg, col, row, p);
         if (py + chh > cfg.roofH) break;
-        if (!overlapsObstacle(cfg, cx, py, cw, chh)) {
+        if (cx + cw <= cfg.roofW && !overlapsObstacle(cfg, cx, py, cw, chh)) {
           const rc = railCount(cfg, py, chh);
           const oriCh = effOri(cfg, col, row) === 1 ? 'L' : 'P';
           panels.push({ col, row, x: cx, y: py, w: cw, h: chh, ori: oriCh, rc, watts: p.watts });
@@ -782,6 +808,7 @@ function computeLayout(cfg) {
       }
     }
   }
+  const nc = panels.length ? Math.max(...panels.map(pp => pp.col)) + 1 : 0;
   const totalW = panels.reduce((s, x) => s + x.watts, 0);
   return { panels, nc, totalP: panels.length, totalW, panelDim: p };
 }
@@ -790,23 +817,46 @@ function computeLayout(cfg) {
 // clamped on the long frame (295-395mm from edge, mid 345), landscape rows on
 // the short frame (100-240mm, mid 170). If an oldRail falls inside the legal
 // window, snap to it so the existing rail can be reused.
+// Aiko clamp zones (manual 2503V15, mono-glass MAH54Mb): distance from panel
+// edge to clamp centre. P = long-frame clamping (portrait on horizontal rails),
+// L = short-frame (landscape). [min, max, default(mid)].
+const CLAMP_ZONE = { P: [295, 395, 345], L: [100, 240, 170] };
+
 function computeAutoRails(cfg, layout) {
-  const ZONE = { P: [295, 395, 345], L: [100, 240, 170] };
+  const ZONE = CLAMP_ZONE;
   const bands = new Map();
   layout.panels.forEach(pp => bands.set(pp.y + ':' + pp.h + ':' + pp.ori, pp));
-  const rails = new Set();
+  // Every band needs a rail inside each of its two clamp-zone intervals.
+  const intervals = [];
   for (const pp of bands.values()) {
-    const [minD, maxD, defD] = ZONE[pp.ori] || ZONE.P;
-    for (const [lo, hi, def] of [
-      [pp.y + minD, pp.y + maxD, pp.y + defD],
-      [pp.y + pp.h - maxD, pp.y + pp.h - minD, pp.y + pp.h - defD],
-    ]) {
-      const candidates = (cfg.oldRails || []).filter(r => r >= lo && r <= hi);
-      const snap = candidates.sort((a, b) => Math.abs(a - def) - Math.abs(b - def))[0];
-      rails.add(snap != null ? snap : def);
-    }
+    // Landscape on horizontal rails = short-frame clamping, only ±1600 Pa —
+    // not buildable for LT snow loads. No rails generated; zones stay drawn.
+    if (pp.ori === 'L') continue;
+    const [minD, maxD] = ZONE[pp.ori] || ZONE.P;
+    intervals.push([pp.y + minD, pp.y + maxD]);
+    intervals.push([pp.y + pp.h - maxD, pp.y + pp.h - minD]);
   }
-  return [...rails].sort((a, b) => a - b);
+  intervals.sort((a, b) => a[1] - b[1]);
+  // Greedy minimum piercing: one rail serves every zone it lies in, so
+  // overlapping zones of different rows/orientations share a single rail.
+  // A rail snapped to an oldRail is pinned; a free rail keeps the running
+  // intersection of the zones it serves and ends up at its middle.
+  // Priority per zone: 1) an already-pinned old rail covers it, 2) pin a new
+  // old rail (reuse beats merging — an old rail is free and its holes stay
+  // sealed), 3) share a free rail with an overlapping zone, 4) new free rail.
+  const pts = [];
+  for (const [lo, hi] of intervals) {
+    if (pts.some(pt => pt.fixed && pt.pos >= lo && pt.pos <= hi)) continue;
+    const mid = (lo + hi) / 2;
+    const olds = (cfg.oldRails || []).filter(r => r >= lo && r <= hi)
+      .sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid));
+    if (olds.length) { pts.push({ fixed: true, pos: olds[0] }); continue; }
+    const free = pts.find(pt => !pt.fixed && Math.max(pt.lo, lo) <= Math.min(pt.hi, hi));
+    if (free) { free.lo = Math.max(free.lo, lo); free.hi = Math.min(free.hi, hi); continue; }
+    pts.push({ fixed: false, lo, hi });
+  }
+  const rails = pts.map(pt => pt.fixed ? pt.pos : Math.round((pt.lo + pt.hi) / 2));
+  return [...new Set(rails)].sort((a, b) => a - b);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -968,6 +1018,18 @@ function drawSide(side) {
       class: 'rail',
       stroke: isSel ? '#f80' : '#00897b'
     }));
+    // Delta to the nearest old rail, shown on the inner (ridge-gap) edge.
+    if ((cfg.oldRails || []).length) {
+      const nearest = cfg.oldRails.reduce((a, b) =>
+        Math.abs(b - r) < Math.abs(a - r) ? b : a);
+      const d = Math.round(r - nearest);
+      const label = d === 0 ? '=0' : (d > 0 ? '+' : '−') + Math.abs(d);
+      const tx = side === 'east' ? ox + cfg.roofW + 60 : ox - 60;
+      const anchor = side === 'east' ? 'start' : 'end';
+      const el = svgText(tx, svgY(r), label, 'rail-delta', anchor, 'middle');
+      el.setAttribute('fill', d === 0 ? '#2e7d32' : '#b26a00');
+      svg.appendChild(el);
+    }
   });
 
   layout.panels.forEach(p => {
@@ -977,6 +1039,13 @@ function drawSide(side) {
       x: px, y: svgY(p.y + p.h), width: p.w, height: p.h,
       fill: c, class: 'panel', 'fill-opacity': 0.85
     }));
+    // Legal clamp zones: stripes where a rail may legally carry this panel.
+    const [zMin, zMax] = CLAMP_ZONE[p.ori] || CLAMP_ZONE.P;
+    for (const [lo, hi] of [[p.y + zMin, p.y + zMax], [p.y + p.h - zMax, p.y + p.h - zMin]]) {
+      svg.appendChild(svgEl('rect', {
+        x: px, y: svgY(hi), width: p.w, height: hi - lo, class: 'clamp-zone'
+      }));
+    }
     const cx = px + p.w / 2, cy = svgY(p.y + p.h / 2);
     svg.appendChild(svgText(cx, cy - 90, `C${p.col}R${p.row}`, 'panel-label', 'middle', 'middle'));
     svg.appendChild(svgText(cx, cy, p.ori, 'panel-label', 'middle', 'middle'));

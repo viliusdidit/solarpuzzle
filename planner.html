@@ -421,6 +421,7 @@ function blankCfg(roofW, roofH, withVelux) {
     autoRails: true,    // rails derived from panel rows each render (snap to oldRails when legal)
     xOffset: withVelux ? 200 : 0,
     rails: [600, 1600, 2300, 3000, 3700, 4700, 5400, 6100],
+    vRails: [],         // vertical rails (X positions) — clamp landscape long frame
     oldRails: [],
     gapX: 10,
     gapY: 10,
@@ -461,6 +462,7 @@ function migrateLoaded(parsed) {
   for (const side of ['east', 'west']) {
     if (!s[side].rowOrientations) s[side].rowOrientations = [];
     if (!s[side].oldRails) s[side].oldRails = [];
+    if (!s[side].vRails) s[side].vRails = [];
     if (s[side].anchorTop == null) s[side].anchorTop = false;
     if (s[side].autoRails == null) s[side].autoRails = false;
     // Migrate per-side inverter (old) to shared global; east wins if both set.
@@ -493,6 +495,7 @@ function normalizeState(s) {
   for (const side of ['east', 'west']) {
     if (s[side] && !s[side].rowOrientations) s[side].rowOrientations = [];
     if (s[side] && !s[side].oldRails) s[side].oldRails = [];
+    if (s[side] && !s[side].vRails) s[side].vRails = [];
     if (s[side] && s[side].anchorTop == null) s[side].anchorTop = false;
     if (s[side] && s[side].autoRails == null) s[side].autoRails = false;
     if (s.inverterIdx == null && s[side] && s[side].inverterIdx != null) s.inverterIdx = s[side].inverterIdx;
@@ -731,6 +734,12 @@ function railCount(cfg, py, h) {
   for (const r of cfg.rails) if (r >= py && r <= py + h) n++;
   return n;
 }
+// Landscape panels are carried by VERTICAL rails; count those crossing in X.
+function vRailCount(cfg, px, w) {
+  let n = 0;
+  for (const r of (cfg.vRails || [])) if (r >= px && r <= px + w) n++;
+  return n;
+}
 function rectsOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
@@ -784,8 +793,8 @@ function computeLayout(cfg) {
         const py = topY - chh;
         if (py < 0) break;
         if (cx + cw <= cfg.roofW && !overlapsObstacle(cfg, cx, py, cw, chh)) {
-          const rc = railCount(cfg, py, chh);
           const oriCh = effOri(cfg, col, row) === 1 ? 'L' : 'P';
+          const rc = oriCh === 'L' ? vRailCount(cfg, cx, cw) : railCount(cfg, py, chh);
           panels.push({ col, row, x: cx, y: py, w: cw, h: chh, ori: oriCh, rc, watts: p.watts });
         }
         topY = py - cfg.gapY;
@@ -799,8 +808,8 @@ function computeLayout(cfg) {
         const cx = colXRow(cfg, col, row, p);
         if (py + chh > cfg.roofH) break;
         if (cx + cw <= cfg.roofW && !overlapsObstacle(cfg, cx, py, cw, chh)) {
-          const rc = railCount(cfg, py, chh);
           const oriCh = effOri(cfg, col, row) === 1 ? 'L' : 'P';
+          const rc = oriCh === 'L' ? vRailCount(cfg, cx, cw) : railCount(cfg, py, chh);
           panels.push({ col, row, x: cx, y: py, w: cw, h: chh, ori: oriCh, rc, watts: p.watts });
         }
         py += chh + cfg.gapY;
@@ -818,8 +827,10 @@ function computeLayout(cfg) {
 // the short frame (100-240mm, mid 170). If an oldRail falls inside the legal
 // window, snap to it so the existing rail can be reused.
 // Aiko clamp zones (manual 2503V15, mono-glass MAH54Mb): distance from panel
-// edge to clamp centre. P = long-frame clamping (portrait on horizontal rails),
-// L = short-frame (landscape). [min, max, default(mid)].
+// edge to clamp centre. P = long-frame clamping (+5400/−2400 Pa) — used for
+// BOTH portrait (horizontal rails) and landscape (VERTICAL rails), since both
+// clamp the long frame, just on different axes. L = short-frame (±1600 Pa,
+// landscape on horizontal rails) — rejected for LT snow, kept for reference.
 const CLAMP_ZONE = { P: [295, 395, 345], L: [100, 240, 170] };
 
 function computeAutoRails(cfg, layout) {
@@ -856,6 +867,32 @@ function computeAutoRails(cfg, layout) {
     pts.push({ fixed: false, lo, hi });
   }
   const rails = pts.map(pt => pt.fixed ? pt.pos : Math.round((pt.lo + pt.hi) / 2));
+  return [...new Set(rails)].sort((a, b) => a - b);
+}
+
+// Vertical rails for landscape panels: clamp the long (horizontal) frame at
+// 295-395mm from each side edge — strong long-frame clamping, the buildable
+// way to run landscape under LT snow. Same greedy piercing in X so adjacent
+// landscape columns share a rail where their zones overlap. No old-rail reuse
+// (existing construction is horizontal only).
+function computeAutoVRails(cfg, layout) {
+  const [minD, maxD] = CLAMP_ZONE.P;
+  const bands = new Map();
+  layout.panels.forEach(pp => { if (pp.ori === 'L') bands.set(pp.x + ':' + pp.w, pp); });
+  const intervals = [];
+  for (const pp of bands.values()) {
+    intervals.push([pp.x + minD, pp.x + maxD]);
+    intervals.push([pp.x + pp.w - maxD, pp.x + pp.w - minD]);
+  }
+  if (!intervals.length) return [];
+  intervals.sort((a, b) => a[1] - b[1]);
+  const pts = [];
+  for (const [lo, hi] of intervals) {
+    const free = pts.find(pt => Math.max(pt.lo, lo) <= Math.min(pt.hi, hi));
+    if (free) { free.lo = Math.max(free.lo, lo); free.hi = Math.min(free.hi, hi); continue; }
+    pts.push({ lo, hi });
+  }
+  const rails = pts.map(pt => Math.round((pt.lo + pt.hi) / 2));
   return [...new Set(rails)].sort((a, b) => a - b);
 }
 
@@ -938,6 +975,7 @@ function drawSide(side) {
   if (cfg.autoRails) {
     // Rails follow the panel rows; re-run layout so rail-count flags see them.
     cfg.rails = computeAutoRails(cfg, layout);
+    cfg.vRails = computeAutoVRails(cfg, layout);
     layout = computeLayout(cfg);
   }
   const svgY = (y) => cfg.roofH - y;
@@ -1032,6 +1070,19 @@ function drawSide(side) {
     }
   });
 
+  // Vertical rails (landscape long-frame clamping). Display-only: auto-derived
+  // each render, so no drag/select handles. Full slope height — real beams.
+  (cfg.vRails || []).forEach(r => {
+    const cx = xCcenter(side, r);
+    svg.appendChild(svgEl('line', {
+      x1: cx, y1: svgY(cfg.roofH), x2: cx, y2: svgY(0),
+      class: 'rail-band', 'stroke-width': RAIL_W, stroke: '#00897b'
+    }));
+    svg.appendChild(svgEl('line', {
+      x1: cx, y1: svgY(cfg.roofH), x2: cx, y2: svgY(0), class: 'rail', stroke: '#00897b'
+    }));
+  });
+
   layout.panels.forEach(p => {
     const c = (p.rc >= 2) ? COL_COLORS[p.col % COL_COLORS.length] : WARN_COLOR;
     const px = xC(side, p.x, p.w);
@@ -1040,11 +1091,22 @@ function drawSide(side) {
       fill: c, class: 'panel', 'fill-opacity': 0.85
     }));
     // Legal clamp zones: stripes where a rail may legally carry this panel.
-    const [zMin, zMax] = CLAMP_ZONE[p.ori] || CLAMP_ZONE.P;
-    for (const [lo, hi] of [[p.y + zMin, p.y + zMax], [p.y + p.h - zMax, p.y + p.h - zMin]]) {
-      svg.appendChild(svgEl('rect', {
-        x: px, y: svgY(hi), width: p.w, height: hi - lo, class: 'clamp-zone'
-      }));
+    // Long-frame clamping (295-395mm from the frame ends) for both: portrait
+    // → horizontal stripes (horizontal rails); landscape → vertical stripes
+    // (vertical rails clamp the long horizontal frame).
+    const [zMin, zMax] = CLAMP_ZONE.P;
+    if (p.ori === 'L') {
+      for (const [a, b] of [[p.x + zMin, p.x + zMax], [p.x + p.w - zMax, p.x + p.w - zMin]]) {
+        svg.appendChild(svgEl('rect', {
+          x: xC(side, a, b - a), y: svgY(p.y + p.h), width: b - a, height: p.h, class: 'clamp-zone'
+        }));
+      }
+    } else {
+      for (const [lo, hi] of [[p.y + zMin, p.y + zMax], [p.y + p.h - zMax, p.y + p.h - zMin]]) {
+        svg.appendChild(svgEl('rect', {
+          x: px, y: svgY(hi), width: p.w, height: hi - lo, class: 'clamp-zone'
+        }));
+      }
     }
     const cx = px + p.w / 2, cy = svgY(p.y + p.h / 2);
     svg.appendChild(svgText(cx, cy - 90, `C${p.col}R${p.row}`, 'panel-label', 'middle', 'middle'));

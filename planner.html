@@ -35,31 +35,37 @@ svg.mode-select { cursor: default; }
 .rail-band { stroke-opacity: 0.3; pointer-events: none; }
 .rail-old { stroke: #888; stroke-width: 40; stroke-dasharray: 100 70; stroke-opacity: 0.6; pointer-events: none; }
 .rail-hit { stroke: transparent; stroke-width: 30; cursor: ns-resize; }
-.rail-label { font-size: 60px; fill: #00897b; font-family: monospace; pointer-events: none; }
+svg.plan .rail, svg.plan .rail-hit { cursor: ew-resize; }
+/* Annotation text is "paper space": sized in screen px via --u (SVG units per
+   screen px, set by render()) so labels stay readable at any canvas scale. */
+.rail-label { font-size: calc(10px * var(--u, 10)); fill: #00897b; font-family: monospace; pointer-events: none; }
 .roof-outline { fill: white; stroke: #0a7; stroke-width: 10; }
 .roof-outline.inactive { stroke: #888; stroke-width: 6; }
 .roof-zone-below { fill: #d8d8d8; pointer-events: none; }
-.zone-label { font-size: 70px; fill: #888; pointer-events: none; }
+.zone-label { font-size: calc(11px * var(--u, 10)); fill: #888; pointer-events: none; }
 .panel { stroke: #111; stroke-width: 4; cursor: pointer; }
-.panel-label { font-size: 65px; fill: #111; pointer-events: none; font-family: sans-serif; }
+.panel-label { font-size: calc(10px * var(--u, 10)); fill: #111; pointer-events: none; font-family: sans-serif; }
 .obstacle-rect { fill: rgba(80, 80, 80, 0.35); stroke: #555; stroke-width: 5; cursor: move; }
 .obstacle-handle { fill: #555; stroke: white; stroke-width: 2; cursor: nwse-resize; }
 .poly-zone { fill: rgba(80, 80, 80, 0.30); stroke: #555; stroke-width: 5; cursor: move; }
 .poly-vertex { fill: #555; stroke: white; stroke-width: 2; cursor: move; }
 .poly-preview { fill: rgba(80, 80, 80, 0.18); stroke: #555; stroke-width: 4; stroke-dasharray: 30,15; pointer-events: none; }
 .safe-zone-line { stroke: #f80; stroke-width: 6; pointer-events: none; }
-.safe-zone-label { font-size: 60px; fill: #f80; pointer-events: none; }
-.summary-text { font-size: 150px; fill: #111; font-family: sans-serif; pointer-events: none; font-weight: bold; }
-.summary-line { font-size: 115px; fill: #444; font-family: sans-serif; pointer-events: none; }
-.side-label { font-size: 200px; fill: #ccc; font-family: sans-serif; pointer-events: none; font-weight: bold; }
+.safe-zone-label { font-size: calc(10px * var(--u, 10)); fill: #f80; pointer-events: none; }
+.summary-text { font-size: calc(15px * var(--u, 10)); fill: #111; font-family: sans-serif; pointer-events: none; font-weight: bold; }
+.summary-line { font-size: calc(12px * var(--u, 10)); fill: #444; font-family: sans-serif; pointer-events: none; }
+.side-label { font-size: calc(20px * var(--u, 10)); fill: #ccc; font-family: sans-serif; pointer-events: none; font-weight: bold; }
 .side-label.active { fill: #0a7; }
 .summary-text.active { fill: #0a7; }
 .ruler-tick { stroke: #333; stroke-width: 5; pointer-events: none; }
-.ruler-label { font-size: 100px; fill: #333; font-family: monospace; pointer-events: none; }
-.rail-delta { font-size: 80px; font-family: monospace; pointer-events: none; }
+.ruler-label { font-size: calc(10px * var(--u, 10)); fill: #333; font-family: monospace; pointer-events: none; }
+.rail-delta { font-size: calc(10px * var(--u, 10)); font-family: monospace; pointer-events: none; }
+.edge-label { font-size: calc(10px * var(--u, 10)); fill: #999; font-family: sans-serif; pointer-events: none; }
+.compass-label { font-size: calc(12px * var(--u, 10)); fill: #555; font-family: sans-serif; font-weight: bold; pointer-events: none; }
+.ridge-line { stroke: #777; stroke-width: 12; pointer-events: none; }
 .clamp-zone { fill: #1b5e20; fill-opacity: 0.22; pointer-events: none; }
 .crosshair { stroke: #ff0066; stroke-width: 12; stroke-dasharray: 60,30; pointer-events: none; opacity: 0.9; }
-.coord-text { font-size: 170px; fill: #0a7; font-family: monospace; pointer-events: none; font-weight: bold; }
+.coord-text { font-size: calc(14px * var(--u, 10)); fill: #0a7; font-family: monospace; pointer-events: none; font-weight: bold; }
 #rect-popup { position: absolute; background: white; border: 1px solid #888; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); padding: 8px; z-index: 100; display: none; font-size: 12px; }
 #rect-popup label { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
 #rect-popup input { width: 80px; padding: 2px 5px; font-size: 12px; border: 1px solid #ccc; }
@@ -119,6 +125,8 @@ svg.mode-select { cursor: default; }
   <button id="btn-load-scad">Upload .scad</button>
   <input type="file" id="load-scad-input" accept=".scad" hidden>
   <button id="btn-export-scad">Export .scad</button>
+  <span class="sep"></span>
+  <button id="btn-view" title="Toggle top-down roof plan / side-by-side facade view">Plan view</button>
   <span class="sep"></span>
   <button id="btn-share" title="Copy a self-contained link to this layout">Share link</button>
   <span style="margin-left:auto;font-size:11px;color:#aaa" id="status">Ready</span>
@@ -251,6 +259,11 @@ const LT = {
   'Upload .scad': 'Įkelti .scad',
   'Export .scad': 'Eksportuoti .scad',
   'Share link': 'Dalintis nuoroda',
+  'Plan view': 'Vaizdas iš viršaus',
+  'Side view': 'Vaizdas iš šono',
+  'RIDGE': 'KRAIGAS',
+  'EAVE': 'KARNIZAS',
+  'terrace': 'terasa',
   'Ready': 'Paruošta',
   'Roof': 'Stogas',
   'Panel': 'Modulis',
@@ -899,51 +912,86 @@ function computeAutoVRails(cfg, layout) {
 // ════════════════════════════════════════════════════════════════════
 // Two-side coordinate system
 // ════════════════════════════════════════════════════════════════════
-const PAD_X = 200;       // left/right padding around roofs
-const PAD_BOTTOM = 600;  // padding below roofs (keep room for ruler labels)
-const PAD_TOP = 200;     // padding above the title block
-const TOPLABEL = 950;    // space reserved for title + dim line + coord label
-const SIDE_GAP = 800;
+// Roof coords are always (x = mm from the SOUTH gable, y = mm from the EAVE).
+// Two display projections of the same coords:
+//   'side' — two facade-style views side by side: east LEFT, west RIGHT
+//            (west X-mirrored), eave at the bottom of each view.
+//   'plan' — CAD roof plan, both planes unfolded flat about the ridge and
+//            placed north-up: west LEFT, east RIGHT, ridge vertical in the
+//            middle, eaves at the outer edges, south (terrace) at the bottom.
+// Gap between the two planes. render() widens it beyond the minimum whenever
+// the canvas has slack width, so the planes align to the sheet edges instead
+// of floating as a centered pair.
+const GAP_MIN = 800;
+let sideGap = GAP_MIN;
+const VIEW_KEY = 'solar-planner-view';
+let viewMode = localStorage.getItem(VIEW_KEY) === 'plan' ? 'plan' : 'side';
+function isPlan() { return viewMode === 'plan'; }
+
+// U = SVG user units (mm) per screen px at the current fit. Annotations are
+// sized/offset in screen px and converted with uPx() ("paper space" text).
+let U = 10;
+function uPx(px) { return px * U; }
 
 function sideOriginX(side) {
-  if (side === 'east') return 0;
-  return state.east.roofW + SIDE_GAP;
+  if (isPlan()) return side === 'west' ? 0 : state.west.roofH + sideGap;
+  return side === 'east' ? 0 : state.east.roofW + sideGap;
 }
 function maxRoofH() { return Math.max(state.west.roofH, state.east.roofH); }
+function maxRoofW() { return Math.max(state.west.roofW, state.east.roofW); }
+
+// roof-mm point → canvas point
+function mapPt(side, x, y) {
+  const cfg = state[side], ox = sideOriginX(side);
+  if (isPlan()) {
+    return {
+      x: side === 'west' ? y : ox + cfg.roofH - y,   // eave→ridge runs inward
+      y: maxRoofW() - x                              // south at the bottom
+    };
+  }
+  return { x: side === 'west' ? ox + cfg.roofW - x : ox + x, y: cfg.roofH - y };
+}
+// roof-mm rect → canvas rect (handles the west mirror and the plan rotation)
+function mapRect(side, x, y, w, h) {
+  const cfg = state[side], ox = sideOriginX(side);
+  if (isPlan()) {
+    return {
+      x: side === 'west' ? y : ox + cfg.roofH - y - h,
+      y: maxRoofW() - x - w,
+      width: h, height: w
+    };
+  }
+  return {
+    x: side === 'west' ? ox + cfg.roofW - x - w : ox + x,
+    y: cfg.roofH - y - h,
+    width: w, height: h
+  };
+}
+function svgPointOf(e) {
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX; pt.y = e.clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
 function whichSide(x) {
-  const westStart = sideOriginX('west');
-  const eastEnd = state.east.roofW;
-  const mid = (eastEnd + westStart) / 2;
-  return x < mid ? 'east' : 'west';
+  const leftSide = isPlan() ? 'west' : 'east';
+  const leftEnd = isPlan() ? state.west.roofH : state.east.roofW;
+  return x < leftEnd + sideGap / 2 ? leftSide : (leftSide === 'west' ? 'east' : 'west');
 }
 function pointerToSideMM(e, side) {
-  const pt = svg.createSVGPoint();
-  pt.x = e.clientX; pt.y = e.clientY;
-  const m = pt.matrixTransform(svg.getScreenCTM().inverse());
-  const ox = sideOriginX(side);
-  const cfg = state[side];
-  // West roof is mirrored on the X axis: x=0 sits on the visual right edge,
-  // increasing leftward toward the ridge gap.
+  const m = svgPointOf(e);
+  const cfg = state[side], ox = sideOriginX(side);
+  if (isPlan()) {
+    return {
+      x: maxRoofW() - m.y,
+      y: side === 'west' ? m.x : ox + cfg.roofH - m.x
+    };
+  }
   let mmX = m.x - ox;
-  if (side === 'west') mmX = cfg.roofW - mmX;
+  if (side === 'west') mmX = cfg.roofW - mmX;   // west is X-mirrored in side view
   return { x: mmX, y: cfg.roofH - m.y };
 }
-// Canvas X for a roof-coord X (and optional width, used when placing a rect's
-// left edge — for west the rect's left is at roofW-x-w in canvas space).
-function xC(side, mmX, mmW = 0) {
-  const ox = sideOriginX(side);
-  if (side === 'west') return ox + state[side].roofW - mmX - mmW;
-  return ox + mmX;
-}
-function xCcenter(side, mmX) {
-  const ox = sideOriginX(side);
-  if (side === 'west') return ox + state[side].roofW - mmX;
-  return ox + mmX;
-}
 function pointerAuto(e) {
-  const pt = svg.createSVGPoint();
-  pt.x = e.clientX; pt.y = e.clientY;
-  const m = pt.matrixTransform(svg.getScreenCTM().inverse());
+  const m = svgPointOf(e);
   const side = whichSide(m.x);
   return { side, ...pointerToSideMM(e, side) };
 }
@@ -969,7 +1017,6 @@ function svgText(x, y, content, cls, anchor, baseline) {
 
 function drawSide(side) {
   const cfg = state[side];
-  const ox = sideOriginX(side);
   const isActive = side === state.activeSide;
   let layout = computeLayout(cfg);
   if (cfg.autoRails) {
@@ -978,93 +1025,129 @@ function drawSide(side) {
     cfg.vRails = computeAutoVRails(cfg, layout);
     layout = computeLayout(cfg);
   }
-  const svgY = (y) => cfg.roofH - y;
+  const R = mapRect(side, 0, 0, cfg.roofW, cfg.roofH);   // whole plane, canvas coords
+  const centerX = R.x + R.width / 2, bottom = R.y + R.height;
+  const NS = LANG === 'lt' ? ['Š', 'P'] : ['N', 'S'];    // [north, south]
 
-  svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(0) + 380,
+  svg.appendChild(svgText(centerX, bottom + uPx(isPlan() ? 30 : 44),
     tSide(side), 'side-label' + (isActive ? ' active' : ''), 'middle'));
 
   svg.appendChild(svgEl('rect', {
-    x: ox, y: svgY(cfg.roofH), width: cfg.roofW, height: cfg.roofH,
+    x: R.x, y: R.y, width: R.width, height: R.height,
     class: 'roof-outline' + (isActive ? '' : ' inactive')
   }));
 
+  // Orientation labels. In side view each plane gets ridge/eave markers plus
+  // gable compass letters; the plan view carries shared furniture instead
+  // (north arrow, ridge line, terrace label — drawn once in render()).
+  if (!isPlan()) {
+    svg.appendChild(svgText(centerX, R.y + uPx(11), '▲ ' + t('RIDGE'), 'edge-label', 'middle'));
+    svg.appendChild(svgText(R.x + R.width - uPx(4), bottom - uPx(5), t('EAVE') + ' ▼', 'edge-label', 'end'));
+    const pS = mapPt(side, 0, 0), pN = mapPt(side, cfg.roofW, 0);
+    svg.appendChild(svgText(pS.x, bottom + uPx(26), NS[1], 'compass-label', 'middle'));
+    // North gable letter gets an arrow showing which way north runs on screen
+    const nLbl = pN.x > pS.x ? NS[0] + ' ▶' : '◀ ' + NS[0];
+    svg.appendChild(svgText(pN.x, bottom + uPx(26), nLbl, 'compass-label', 'middle'));
+  }
+
   if (cfg.startY > 0) {
-    if (cfg.anchorTop) {
-      svg.appendChild(svgEl('rect', {
-        x: ox, y: svgY(cfg.roofH), width: cfg.roofW, height: cfg.startY,
-        class: 'roof-zone-below'
-      }));
-      svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(cfg.roofH - cfg.startY / 2),
-        `${t('no panels above')} ${cfg.startY}mm`, 'zone-label', 'middle', 'middle'));
-    } else {
-      svg.appendChild(svgEl('rect', {
-        x: ox, y: svgY(cfg.startY), width: cfg.roofW, height: cfg.startY,
-        class: 'roof-zone-below'
-      }));
-      svg.appendChild(svgText(ox + cfg.roofW / 2, svgY(cfg.startY / 2),
-        `${t('no panels below')} ${cfg.startY}mm`, 'zone-label', 'middle', 'middle'));
-    }
+    const zy = cfg.anchorTop ? cfg.roofH - cfg.startY : 0;
+    const zr = mapRect(side, 0, zy, cfg.roofW, cfg.startY);
+    svg.appendChild(svgEl('rect', {
+      x: zr.x, y: zr.y, width: zr.width, height: zr.height, class: 'roof-zone-below'
+    }));
+    const zcx = zr.x + zr.width / 2, zcy = zr.y + zr.height / 2;
+    const zlbl = svgText(zcx, zcy,
+      `${t(cfg.anchorTop ? 'no panels above' : 'no panels below')} ${cfg.startY}mm`,
+      'zone-label', 'middle', 'middle');
+    if (isPlan()) zlbl.setAttribute('transform', `rotate(-90 ${zcx} ${zcy})`);
+    svg.appendChild(zlbl);
   }
 
   if (cfg.showRulers) {
-    // Y rulers (vertical edges)
+    // Eave-distance ruler (roof y, 0 = eave): along both gable edges in side
+    // view; along the south (bottom) edge in plan view.
     for (let yMm = 0; yMm <= cfg.roofH; yMm += 100) {
       const tw = (yMm % 1000 === 0) ? 130 : (yMm % 500 === 0) ? 80 : 40;
-      svg.appendChild(svgEl('line', { x1: ox - tw / 2, y1: svgY(yMm), x2: ox + tw / 2, y2: svgY(yMm), class: 'ruler-tick' }));
-      svg.appendChild(svgEl('line', { x1: ox + cfg.roofW - tw / 2, y1: svgY(yMm), x2: ox + cfg.roofW + tw / 2, y2: svgY(yMm), class: 'ruler-tick' }));
-      if (yMm % 1000 === 0) {
-        if (side === 'east') {
-          svg.appendChild(svgText(ox - 130, svgY(yMm), (yMm / 1000) + 'm', 'ruler-label', 'end', 'middle'));
-        } else {
-          svg.appendChild(svgText(ox + cfg.roofW + 130, svgY(yMm), (yMm / 1000) + 'm', 'ruler-label', 'start', 'middle'));
+      if (isPlan()) {
+        const p = mapPt(side, 0, yMm);
+        svg.appendChild(svgEl('line', { x1: p.x, y1: p.y - tw / 2, x2: p.x, y2: p.y + tw / 2, class: 'ruler-tick' }));
+        if (yMm % 1000 === 0) {
+          svg.appendChild(svgText(p.x, p.y + uPx(12), (yMm / 1000) + 'm', 'ruler-label', 'middle', 'middle'));
+        }
+      } else {
+        for (const gx of [0, cfg.roofW]) {
+          const p = mapPt(side, gx, yMm);
+          svg.appendChild(svgEl('line', { x1: p.x - tw / 2, y1: p.y, x2: p.x + tw / 2, y2: p.y, class: 'ruler-tick' }));
+        }
+        if (yMm % 1000 === 0) {
+          const outerX = side === 'east' ? R.x - uPx(4) : R.x + R.width + uPx(4);
+          svg.appendChild(svgText(outerX, R.y + cfg.roofH - yMm, (yMm / 1000) + 'm',
+            'ruler-label', side === 'east' ? 'end' : 'start', 'middle'));
         }
       }
     }
-    // X rulers (bottom edge). For west, x=0 is on the visual right.
+    // Gable-distance ruler (roof x, 0 = south/terrace): along the eave edge —
+    // bottom edge in side view, outer (eave) edge in plan view.
     for (let xMm = 0; xMm <= cfg.roofW; xMm += 100) {
       const tw = (xMm % 1000 === 0) ? 130 : (xMm % 500 === 0) ? 80 : 40;
-      const cx = xCcenter(side, xMm);
-      svg.appendChild(svgEl('line', { x1: cx, y1: svgY(0) - tw / 2, x2: cx, y2: svgY(0) + tw / 2, class: 'ruler-tick' }));
-      if (xMm % 1000 === 0) {
-        svg.appendChild(svgText(cx, svgY(0) + 230, (xMm / 1000) + 'm', 'ruler-label', 'middle', 'middle'));
+      const p = mapPt(side, xMm, 0);
+      if (isPlan()) {
+        svg.appendChild(svgEl('line', { x1: p.x - tw / 2, y1: p.y, x2: p.x + tw / 2, y2: p.y, class: 'ruler-tick' }));
+        if (xMm % 1000 === 0) {
+          const lx = side === 'west' ? p.x - uPx(4) : p.x + uPx(4);
+          svg.appendChild(svgText(lx, p.y, (xMm / 1000) + 'm', 'ruler-label',
+            side === 'west' ? 'end' : 'start', 'middle'));
+        }
+      } else {
+        svg.appendChild(svgEl('line', { x1: p.x, y1: p.y - tw / 2, x2: p.x, y2: p.y + tw / 2, class: 'ruler-tick' }));
+        if (xMm % 1000 === 0) {
+          svg.appendChild(svgText(p.x, p.y + uPx(14), (xMm / 1000) + 'm', 'ruler-label', 'middle', 'middle'));
+        }
       }
     }
   }
 
   // Old (dismantled/previous) rails: dashed grey bands at physical rail width.
   (cfg.oldRails || []).forEach(r => {
-    svg.appendChild(svgEl('line', {
-      x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r), class: 'rail-old'
-    }));
+    const a = mapPt(side, 0, r), b = mapPt(side, cfg.roofW, r);
+    svg.appendChild(svgEl('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'rail-old' }));
   });
 
   cfg.rails.forEach((r, idx) => {
+    const a = mapPt(side, 0, r), b = mapPt(side, cfg.roofW, r);
     const hit = svgEl('line', {
-      x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r), class: 'rail-hit'
+      x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'rail-hit',
+      style: `stroke-width:${Math.max(30, uPx(10))}px`
     });
     hit.dataset.kind = 'rail'; hit.dataset.idx = idx; hit.dataset.side = side;
     svg.appendChild(hit);
     const isSel = selected && selected.kind === 'rail' && selected.side === side && selected.idx === idx;
     // Physical rail width (40mm profile) as translucent band + crisp centerline.
     svg.appendChild(svgEl('line', {
-      x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r),
+      x1: a.x, y1: a.y, x2: b.x, y2: b.y,
       class: 'rail-band', 'stroke-width': RAIL_W,
       stroke: isSel ? '#f80' : '#00897b'
     }));
     svg.appendChild(svgEl('line', {
-      x1: ox, y1: svgY(r), x2: ox + cfg.roofW, y2: svgY(r),
+      x1: a.x, y1: a.y, x2: b.x, y2: b.y,
       class: 'rail',
       stroke: isSel ? '#f80' : '#00897b'
     }));
-    // Delta to the nearest old rail, shown on the inner (ridge-gap) edge.
+    // Delta to the nearest old rail: on the inner (ridge-gap) edge in side
+    // view; above the rail's north end in plan view.
     if ((cfg.oldRails || []).length) {
-      const nearest = cfg.oldRails.reduce((a, b) =>
-        Math.abs(b - r) < Math.abs(a - r) ? b : a);
+      const nearest = cfg.oldRails.reduce((a2, b2) =>
+        Math.abs(b2 - r) < Math.abs(a2 - r) ? b2 : a2);
       const d = Math.round(r - nearest);
       const label = d === 0 ? '=0' : (d > 0 ? '+' : '−') + Math.abs(d);
-      const tx = side === 'east' ? ox + cfg.roofW + 60 : ox - 60;
-      const anchor = side === 'east' ? 'start' : 'end';
-      const el = svgText(tx, svgY(r), label, 'rail-delta', anchor, 'middle');
+      let el;
+      if (isPlan()) {
+        el = svgText(b.x, R.y - uPx(4), label, 'rail-delta', 'middle');
+      } else {
+        const tx = side === 'east' ? R.x + R.width + uPx(5) : R.x - uPx(5);
+        el = svgText(tx, a.y, label, 'rail-delta', side === 'east' ? 'start' : 'end', 'middle');
+      }
       el.setAttribute('fill', d === 0 ? '#2e7d32' : '#b26a00');
       svg.appendChild(el);
     }
@@ -1073,71 +1156,69 @@ function drawSide(side) {
   // Vertical rails (landscape long-frame clamping). Display-only: auto-derived
   // each render, so no drag/select handles. Full slope height — real beams.
   (cfg.vRails || []).forEach(r => {
-    const cx = xCcenter(side, r);
+    const a = mapPt(side, r, 0), b = mapPt(side, r, cfg.roofH);
     svg.appendChild(svgEl('line', {
-      x1: cx, y1: svgY(cfg.roofH), x2: cx, y2: svgY(0),
+      x1: a.x, y1: a.y, x2: b.x, y2: b.y,
       class: 'rail-band', 'stroke-width': RAIL_W, stroke: '#00897b'
     }));
     svg.appendChild(svgEl('line', {
-      x1: cx, y1: svgY(cfg.roofH), x2: cx, y2: svgY(0), class: 'rail', stroke: '#00897b'
+      x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: 'rail', stroke: '#00897b'
     }));
   });
 
   layout.panels.forEach(p => {
     const c = (p.rc >= 2) ? COL_COLORS[p.col % COL_COLORS.length] : WARN_COLOR;
-    const px = xC(side, p.x, p.w);
+    const pr = mapRect(side, p.x, p.y, p.w, p.h);
     svg.appendChild(svgEl('rect', {
-      x: px, y: svgY(p.y + p.h), width: p.w, height: p.h,
+      x: pr.x, y: pr.y, width: pr.width, height: pr.height,
       fill: c, class: 'panel', 'fill-opacity': 0.85
     }));
     // Legal clamp zones: stripes where a rail may legally carry this panel.
     // Long-frame clamping (295-395mm from the frame ends) for both: portrait
-    // → horizontal stripes (horizontal rails); landscape → vertical stripes
-    // (vertical rails clamp the long horizontal frame).
+    // → stripes across the panel width (horizontal rails); landscape →
+    // stripes across the height (vertical rails clamp the long frame).
     const [zMin, zMax] = CLAMP_ZONE.P;
-    if (p.ori === 'L') {
-      for (const [a, b] of [[p.x + zMin, p.x + zMax], [p.x + p.w - zMax, p.x + p.w - zMin]]) {
-        svg.appendChild(svgEl('rect', {
-          x: xC(side, a, b - a), y: svgY(p.y + p.h), width: b - a, height: p.h, class: 'clamp-zone'
-        }));
-      }
-    } else {
-      for (const [lo, hi] of [[p.y + zMin, p.y + zMax], [p.y + p.h - zMax, p.y + p.h - zMin]]) {
-        svg.appendChild(svgEl('rect', {
-          x: px, y: svgY(hi), width: p.w, height: hi - lo, class: 'clamp-zone'
-        }));
-      }
+    const zones = p.ori === 'L'
+      ? [[p.x + zMin, p.y, zMax - zMin, p.h], [p.x + p.w - zMax, p.y, zMax - zMin, p.h]]
+      : [[p.x, p.y + zMin, p.w, zMax - zMin], [p.x, p.y + p.h - zMax, p.w, zMax - zMin]];
+    for (const [zx, zy, zw, zh] of zones) {
+      const zr = mapRect(side, zx, zy, zw, zh);
+      svg.appendChild(svgEl('rect', {
+        x: zr.x, y: zr.y, width: zr.width, height: zr.height, class: 'clamp-zone'
+      }));
     }
-    const cx = px + p.w / 2, cy = svgY(p.y + p.h / 2);
-    svg.appendChild(svgText(cx, cy - 90, `C${p.col}R${p.row}`, 'panel-label', 'middle', 'middle'));
+    const cx = pr.x + pr.width / 2, cy = pr.y + pr.height / 2, dy = uPx(11);
+    svg.appendChild(svgText(cx, cy - dy, `C${p.col}R${p.row}`, 'panel-label', 'middle', 'middle'));
     svg.appendChild(svgText(cx, cy, p.ori, 'panel-label', 'middle', 'middle'));
-    svg.appendChild(svgText(cx, cy + 90, p.watts + 'W', 'panel-label', 'middle', 'middle'));
+    svg.appendChild(svgText(cx, cy + dy, p.watts + 'W', 'panel-label', 'middle', 'middle'));
   });
 
   cfg.obstacles.forEach((o, idx) => {
     const isSel = selected && selected.kind === 'obstacle' && selected.side === side && selected.idx === idx;
-    const ox1 = xC(side, o.x, o.w);
+    const or = mapRect(side, o.x, o.y, o.w, o.h);
     const r = svgEl('rect', {
-      x: ox1, y: svgY(o.y + o.h), width: o.w, height: o.h,
+      x: or.x, y: or.y, width: or.width, height: or.height,
       class: 'obstacle-rect',
       stroke: isSel ? '#f80' : '#555'
     });
     r.dataset.kind = 'obstacle'; r.dataset.idx = idx; r.dataset.side = side;
     svg.appendChild(r);
-    svg.appendChild(svgEl('line', { x1: ox1, y1: svgY(o.y), x2: ox1 + o.w, y2: svgY(o.y + o.h), stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
-    svg.appendChild(svgEl('line', { x1: ox1 + o.w, y1: svgY(o.y), x2: ox1, y2: svgY(o.y + o.h), stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
-    // Resize handle: visual bottom-right corner of the rendered rect.
-    const handleX = ox1 + o.w - 70;
+    svg.appendChild(svgEl('line', { x1: or.x, y1: or.y, x2: or.x + or.width, y2: or.y + or.height, stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
+    svg.appendChild(svgEl('line', { x1: or.x + or.width, y1: or.y, x2: or.x, y2: or.y + or.height, stroke: '#900', 'stroke-width': 4, 'pointer-events': 'none' }));
+    // Resize handle: centered on the roof-coord (x+w, y+h) corner — the one
+    // the resize drag moves — wherever the current view maps it.
+    const hp = mapPt(side, o.x + o.w, o.y + o.h);
+    const hs = Math.max(140, uPx(14));
     const handle = svgEl('rect', {
-      x: handleX, y: svgY(o.y + o.h) - 70,
-      width: 140, height: 140, class: 'obstacle-handle'
+      x: hp.x - hs / 2, y: hp.y - hs / 2,
+      width: hs, height: hs, class: 'obstacle-handle'
     });
     handle.dataset.kind = 'obstacle-handle'; handle.dataset.idx = idx; handle.dataset.side = side;
     svg.appendChild(handle);
   });
 
   cfg.polyObstacles.forEach((poly, idx) => {
-    const pts = poly.map(p => `${xCcenter(side, p[0])},${svgY(p[1])}`).join(' ');
+    const pts = poly.map(p => { const q = mapPt(side, p[0], p[1]); return `${q.x},${q.y}`; }).join(' ');
     const isSel = selected && selected.kind === 'poly' && selected.side === side && selected.idx === idx;
     const polyEl = svgEl('polygon', {
       points: pts, class: 'poly-zone',
@@ -1146,8 +1227,9 @@ function drawSide(side) {
     polyEl.dataset.kind = 'poly'; polyEl.dataset.idx = idx; polyEl.dataset.side = side;
     svg.appendChild(polyEl);
     poly.forEach((v, vi) => {
+      const q = mapPt(side, v[0], v[1]);
       const c = svgEl('circle', {
-        cx: xCcenter(side, v[0]), cy: svgY(v[1]), r: 70, class: 'poly-vertex'
+        cx: q.x, cy: q.y, r: Math.max(70, uPx(7)), class: 'poly-vertex'
       });
       c.dataset.kind = 'polyVertex'; c.dataset.idx = idx; c.dataset.vidx = vi; c.dataset.side = side;
       svg.appendChild(c);
@@ -1155,14 +1237,15 @@ function drawSide(side) {
   });
 
   if (drawingPoly && drawingPolySide === side && drawingPoly.length >= 1) {
-    const pts = drawingPoly.map(p => `${xCcenter(side, p[0])},${svgY(p[1])}`).join(' ');
+    const pts = drawingPoly.map(p => { const q = mapPt(side, p[0], p[1]); return `${q.x},${q.y}`; }).join(' ');
     if (drawingPoly.length >= 3) {
       svg.appendChild(svgEl('polygon', { points: pts, class: 'poly-preview' }));
     } else {
       svg.appendChild(svgEl('polyline', { points: pts, class: 'poly-preview', fill: 'none' }));
     }
     drawingPoly.forEach(v => {
-      svg.appendChild(svgEl('circle', { cx: xCcenter(side, v[0]), cy: svgY(v[1]), r: 60, fill: '#555', stroke: 'white', 'stroke-width': 2 }));
+      const q = mapPt(side, v[0], v[1]);
+      svg.appendChild(svgEl('circle', { cx: q.x, cy: q.y, r: 60, fill: '#555', stroke: 'white', 'stroke-width': 2 }));
     });
   }
 
@@ -1170,21 +1253,28 @@ function drawSide(side) {
     const r = drawingRect;
     const x = Math.min(r.x0, r.x), y = Math.min(r.y0, r.y);
     const w = Math.abs(r.x - r.x0), h = Math.abs(r.y - r.y0);
+    const rr = mapRect(side, x, y, w, h);
     svg.appendChild(svgEl('rect', {
-      x: xC(side, x, w), y: svgY(y + h), width: w, height: h,
+      x: rr.x, y: rr.y, width: rr.width, height: rr.height,
       fill: 'rgba(80,80,80,0.3)', stroke: '#555', 'stroke-width': 5,
       'stroke-dasharray': '30,15', 'pointer-events': 'none'
     }));
   }
 
   if (cfg.safeZoneX > 0 && cfg.safeZoneX < cfg.roofW) {
-    const sx = xCcenter(side, cfg.safeZoneX);
+    const a = mapPt(side, cfg.safeZoneX, 0), b = mapPt(side, cfg.safeZoneX, cfg.roofH);
     svg.appendChild(svgEl('line', {
-      x1: sx, y1: svgY(cfg.roofH), x2: sx, y2: svgY(0),
+      x1: a.x, y1: a.y, x2: b.x, y2: b.y,
       class: 'safe-zone-line'
     }));
-    svg.appendChild(svgText(sx, svgY(cfg.roofH) - 80,
-      `${t('safe zone')} ${cfg.safeZoneX / 1000}m`, 'safe-zone-label', 'middle'));
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    if (isPlan()) {
+      svg.appendChild(svgText(mid.x, mid.y - uPx(4),
+        `${t('safe zone')} ${cfg.safeZoneX / 1000}m`, 'safe-zone-label', 'middle'));
+    } else {
+      svg.appendChild(svgText(b.x, b.y - uPx(6),
+        `${t('safe zone')} ${cfg.safeZoneX / 1000}m`, 'safe-zone-label', 'middle'));
+    }
   }
 
   const p = CATALOG[cfg.panelIdx] || CATALOG[1];
@@ -1199,12 +1289,12 @@ function drawSide(side) {
     else vRange = ' ✓';
   }
   const activeMark = isActive ? `  ◀ ${t('active')}` : '';
-  svg.appendChild(svgText(ox, -750,
+  svg.appendChild(svgText(R.x, -uPx(52),
     `${tSide(side)}: ${layout.totalP} ${tPanels(layout.totalP)}  ${(layout.totalW/1000).toFixed(2)} kWp  1×${Math.round(vocSeries)}V${vRange}${activeMark}`,
     'summary-text' + (isActive ? ' active' : '')));
   const warn = layout.panels.filter(pp => pp.rc < 2).length;
   const warnTxt = warn > 0 ? `  ⚠ ${warn} ${t('panel(s) <2 rails')}` : '';
-  svg.appendChild(svgText(ox, -530,
+  svg.appendChild(svgText(R.x, -uPx(36),
     `${cfg.roofW}×${cfg.roofH}mm  ${t('panel')} ${p.w}×${p.h} ${p.watts}W  ${t('cols')} ${layout.nc}  ${t('rails')} ${cfg.rails.length}  inv ${inv.label.split(' ')[0]} ${inv.kw}kW${warnTxt}`,
     'summary-line'));
 
@@ -1212,15 +1302,39 @@ function drawSide(side) {
 }
 
 function render() {
-  const totalW = state.west.roofW + state.east.roofW + SIDE_GAP;
-  const maxH = maxRoofH();
-  const vbX = -PAD_X, vbY = -PAD_TOP - TOPLABEL;
-  const vbW = totalW + 2 * PAD_X;
-  const vbH = maxH + PAD_TOP + TOPLABEL + PAD_BOTTOM;
+  const baseW = isPlan()
+    ? state.west.roofH + state.east.roofH
+    : state.east.roofW + state.west.roofW;
+  const contentH = isPlan() ? maxRoofW() : maxRoofH();
+
+  // Paper-space margins: estimate units-per-px from the content fit, reserve
+  // label margins in those units, then fix U from the final viewBox so all
+  // uPx() offsets and CSS calc(px * var(--u)) fonts are true screen px.
+  const cw = svg.clientWidth || 1200, ch = svg.clientHeight || 700;
+  sideGap = GAP_MIN;
+  const u0 = Math.max((baseW + sideGap) / cw, contentH / ch);
+  const padX = 55 * u0, padTop = 8 * u0, topLabel = 95 * u0, padBottom = 60 * u0;
+  let vbW = baseW + sideGap + 2 * padX;
+  const vbH = contentH + padTop + topLabel + padBottom;
+  // Side-align: when height-limited (slack width), widen the middle gap so
+  // the planes sit at the sheet edges instead of floating as a centered pair.
+  if (vbH / ch > vbW / cw) {
+    sideGap += (vbH / ch) * cw - vbW;
+    vbW = baseW + sideGap + 2 * padX;
+  }
+  const vbX = -padX, vbY = -padTop - topLabel;
   svg.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+  // On a very small canvas, full-size paper-space text would swamp the
+  // drawing — degrade annotation size smoothly below ~700×380 px.
+  const fontScale = Math.min(1, cw / 700, ch / 380);
+  U = Math.max(vbW / cw, vbH / ch) * fontScale;
+  svg.style.setProperty('--u', U);
   svg.classList.toggle('mode-select', mode === 'select');
+  svg.classList.toggle('plan', isPlan());
 
   clearChildren(svg);
+
+  if (isPlan()) drawPlanFurniture(baseW + sideGap);
 
   const lw = drawSide('west');
   const le = drawSide('east');
@@ -1228,6 +1342,51 @@ function render() {
   updateSidebar(lw, le);
   updateSCAD();
   document.getElementById('btn-close-poly').disabled = !(drawingPoly && drawingPoly.length >= 3);
+}
+
+// Plan-view sheet furniture: north arrow, ridge line, terrace/eave labels —
+// the annotations that let an architect orient the drawing at a glance.
+function drawPlanFurniture(contentW) {
+  const gx = state.west.roofH + sideGap / 2;   // ridge gap centerline
+  const H = maxRoofW();
+  const NS = LANG === 'lt' ? ['Š', 'P'] : ['N', 'S'];
+  // Ridge line down the gap + rotated label
+  svg.appendChild(svgEl('line', { x1: gx, y1: 0, x2: gx, y2: H, class: 'ridge-line' }));
+  const rl = svgText(gx - uPx(6), H / 2, t('RIDGE'), 'edge-label', 'middle');
+  rl.setAttribute('transform', `rotate(-90 ${gx - uPx(6)} ${H / 2})`);
+  svg.appendChild(rl);
+  drawNorthArrow(gx, -uPx(26), NS[0]);
+  // South (terrace) label below, eave labels rotated along the outer edges
+  svg.appendChild(svgText(gx, H + uPx(32), `${NS[1]} — ${t('terrace')}`, 'compass-label', 'middle'));
+  const wy = H - state.west.roofW / 2, wx = -uPx(40);
+  const wl = svgText(wx, wy, (LANG === 'lt' ? 'V — ' : 'W — ') + t('EAVE'), 'edge-label', 'middle');
+  wl.setAttribute('transform', `rotate(-90 ${wx} ${wy})`);
+  svg.appendChild(wl);
+  const ey = H - state.east.roofW / 2, ex = contentW + uPx(40);
+  const el = svgText(ex, ey, (LANG === 'lt' ? 'R — ' : 'E — ') + t('EAVE'), 'edge-label', 'middle');
+  el.setAttribute('transform', `rotate(90 ${ex} ${ey})`);
+  svg.appendChild(el);
+}
+
+// Classic CAD north symbol: circle, arrow up through it, letter on top.
+// (cx, cy) is the circle center; north is always canvas-up in plan view.
+function drawNorthArrow(cx, cy, letter) {
+  const r = uPx(10);
+  svg.appendChild(svgEl('circle', {
+    cx, cy, r, fill: 'white', 'fill-opacity': 0.7,
+    stroke: '#333', 'stroke-width': uPx(1.5)
+  }));
+  svg.appendChild(svgEl('line', {
+    x1: cx, y1: cy + r * 0.75, x2: cx, y2: cy - r * 0.35,
+    stroke: '#333', 'stroke-width': uPx(1.5)
+  }));
+  svg.appendChild(svgEl('polygon', {
+    points: `${cx},${cy - r * 0.8} ${cx - r * 0.4},${cy - r * 0.1} ${cx + r * 0.4},${cy - r * 0.1}`,
+    fill: '#333'
+  }));
+  const txt = svgText(cx, cy - r - uPx(4), letter, 'compass-label', 'middle');
+  txt.setAttribute('fill', '#333');
+  svg.appendChild(txt);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -1648,6 +1807,16 @@ document.getElementById('btn-copy-scad').addEventListener('click', () => {
   });
 });
 
+function updateViewBtn() {
+  document.getElementById('btn-view').textContent = isPlan() ? t('Side view') : t('Plan view');
+}
+document.getElementById('btn-view').addEventListener('click', () => {
+  viewMode = isPlan() ? 'side' : 'plan';
+  localStorage.setItem(VIEW_KEY, viewMode);
+  updateViewBtn();
+  render();
+});
+
 document.getElementById('btn-share').addEventListener('click', () => {
   const encoded = encodePlan(state);
   // Keep ?lang=… (and any other query params) so the shared link opens in the same language.
@@ -1940,11 +2109,10 @@ function ensureCoordLabel() {
 }
 function updateCoordLabel(side, x, y) {
   ensureCoordLabel();
-  const ox = sideOriginX(side);
   const cfg = state[side];
-  // place just below the roof title block (summary line is at y=-530 in SVG)
-  coordLabel.setAttribute('x', ox);
-  coordLabel.setAttribute('y', -230);
+  // place just below the roof title block, at the plane's canvas left edge
+  coordLabel.setAttribute('x', mapRect(side, 0, 0, cfg.roofW, cfg.roofH).x);
+  coordLabel.setAttribute('y', -uPx(18));
   coordLabel.textContent = `${tSide(side)} ${t('cursor')}  x=${Math.round(x)}  y=${Math.round(y)}`;
   coordLabel.style.display = '';
 }
@@ -2036,7 +2204,10 @@ buildSideTabs();
 buildColList();
 buildRowList();
 syncInputs();
+updateViewBtn();
 render();
+// Re-render on canvas resize so paper-space annotations keep their px size.
+new ResizeObserver(() => render()).observe(document.getElementById('canvas-wrap'));
 if (loadedFromShare) {
   document.getElementById('status').textContent = t('Loaded shared plan from link — edit or Save JSON to keep it');
 }

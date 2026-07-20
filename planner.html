@@ -157,6 +157,7 @@ svg.plan .rail, svg.plan .rail-hit { cursor: ew-resize; }
   <div class="sec">
     <h3 id="hdr-inverter">Inverter</h3>
     <label><span>Model</span><select id="cfg-inverterIdx"></select></label>
+    <label><span>Min °C</span><input type="number" id="cfg-designMinC"></label>
   </div>
 
   <div class="sec">
@@ -407,19 +408,29 @@ const CATALOG = [
   { label: 'Trina TSM-455 NEG9R.25 Full Black 1134×1762',       w: 1134, h: 1762, watts: 455, voc: 40.6,  vmp: 34.0 },
   { label: 'Aiko Neostar 2S A460-MAH54Mb Full Black 1134×1722', w: 1134, h: 1722, watts: 460, voc: 40.89, vmp: 33.90 },
   { label: 'Jinko 48QL6-DB 465W Full Black 1134×1762',          w: 1134, h: 1762, watts: 465, voc: 35.92, vmp: 30.74 },
-  { label: 'Aiko A465-MAH54Mb Neostar 2S Full Black 1134×1722', w: 1134, h: 1722, watts: 465, voc: 41.12, vmp: 34.68 },
+  { label: 'Aiko A465-MAH54Mb Neostar 2S Full Black 1134×1722', w: 1134, h: 1722, watts: 465, voc: 41.12, vmp: 34.68, isc: 14.29, imp: 13.41, tcVoc: -0.24 },
   { label: 'Axitec ACM310 992×1640',                            w:  992, h: 1640, watts: 310, voc: 39.94, vmp: 32.51 },
+  { label: 'LONGi LR7-54HVH-480M Hi-MO X10 1134×1800',          w: 1134, h: 1800, watts: 480, voc: 40.29, vmp: 33.28, isc: 15.13, imp: 14.43, tcVoc: -0.20 },
+  { label: 'Trina Vertex S+ TSM-465NEG9R.28 Glass-Glass 1134×1762', w: 1134, h: 1762, watts: 465, voc: 54.2, vmp: 45.8, isc: 10.85, imp: 10.16, tcVoc: -0.24 },
 ];
 
 // Inverters — vMax/vMpptMin/vMpptMax are DC limits, kw is nominal AC
+// maxA = MPPT input current limit (east/primary); maxA2 = secondary MPPT current
+// limit mapped to WEST (only asymmetric units set it — SMA B-input caps at 12A).
 // SMA STP10.0-3AV-40 datasheet (en-41): MPPT 320–800V, Vmax 1000V, A:20A/2 strings, B:12A/1 string
 // Sigenergy SigenStor EC 17.0TP: MPPT 160–1000V, Vmax 1000V, 16A per input (5–40kW range)
 const INVERTERS = [
-  { label: 'SMA Sunny Tripower 10.0',         kw: 10, vMax: 1000, vMpptMin: 320, vMpptMax: 800, maxA: 20 },
+  { label: 'SMA Sunny Tripower 10.0',         kw: 10, vMax: 1000, vMpptMin: 320, vMpptMax: 800, maxA: 20, maxA2: 12 },
   { label: 'Sigenergy SigenStor EC 17.0TP',   kw: 17, vMax: 1000, vMpptMin: 160, vMpptMax: 1000, maxA: 16 },
   { label: 'Felicity IVGM15KLP3G1 (15kW)',    kw: 15, vMax: 800,  vMpptMin: 160, vMpptMax: 650,  maxA: 26 },
   { label: 'Felicity IVGM20KLP3G1 (20kW)',    kw: 20, vMax: 800,  vMpptMin: 160, vMpptMax: 650,  maxA: 26 },
 ];
+
+// Cold-Voc string check: panel Voc/Vmp rise as temperature drops below STC 25°C.
+// tcVoc (%/°C, negative) is per-panel; DEFAULT_TC_VOC is a conservative fallback
+// for legacy entries without it. DEFAULT_MIN_C is the LT design-min ambient.
+const DEFAULT_TC_VOC = -0.27;
+const DEFAULT_MIN_C = -25;
 
 const COL_COLORS = ['#3fbf5f', '#e6b022', '#3392e6', '#bf4dcc', '#67c4d4'];
 const WARN_COLOR = '#e63333';
@@ -456,6 +467,7 @@ const DEFAULT_STATE = {
     oldRails: [700, 1780, 2500, 3290, 3990, 5030, 5730, 6580] }),
   activeSide: 'east',
   inverterIdx: 0,
+  designMinC: DEFAULT_MIN_C,   // design-minimum ambient °C for cold-Voc string check
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -1281,16 +1293,31 @@ function drawSide(side) {
   const inv = INVERTERS[state.inverterIdx ?? 0] || INVERTERS[0];
   const vocSeries = layout.totalP * (p.voc || 0);
   const vmpSeries = layout.totalP * (p.vmp || p.voc || 0);
+  // Cold-Voc derate: string voltage peaks at the design-minimum temperature.
+  // coldF > 1 for Tmin < 25°C; the Vmax/MPPT-top ceilings are the cold risks,
+  // so check those against cold voltages. MPPT-bottom stays on STC Vmp (a hot
+  // derate would be the relevant case there, not modelled here).
+  const Tmin = state.designMinC ?? DEFAULT_MIN_C;
+  const coldF = 1 + ((p.tcVoc != null ? p.tcVoc : DEFAULT_TC_VOC) / 100) * (Tmin - 25);
+  const vocCold = vocSeries * coldF;
+  const vmpCold = vmpSeries * coldF;
   let vRange = '';
   if (vocSeries > 0 && inv) {
-    if (vocSeries > inv.vMax) vRange = ` ⚠ >Vmax ${inv.vMax}V`;        // Voc vs absolute ceiling
-    else if (vmpSeries > inv.vMpptMax) vRange = ` ⚠ >MPPT ${inv.vMpptMax}V`;  // Vmp vs MPPT top
-    else if (vmpSeries < inv.vMpptMin) vRange = ` ⚠ <MPPT ${inv.vMpptMin}V`;  // Vmp vs MPPT bottom
+    if (vocCold > inv.vMax) vRange = ` ⚠ >Vmax ${inv.vMax}V`;          // cold Voc vs absolute ceiling
+    else if (vmpCold > inv.vMpptMax) vRange = ` ⚠ >MPPT ${inv.vMpptMax}V`;  // cold Vmp vs MPPT top
+    else if (vmpSeries < inv.vMpptMin) vRange = ` ⚠ <MPPT ${inv.vMpptMin}V`;  // STC Vmp vs MPPT bottom
     else vRange = ' ✓';
+  }
+  // MPPT current-clipping check (soft loss, not a fault): 1 string/side, so string
+  // current = panel Imp. West maps to the secondary (smaller) MPPT if asymmetric.
+  let cRange = '';
+  const sideMaxA = (side === 'west' && inv && inv.maxA2) ? inv.maxA2 : (inv && inv.maxA);
+  if (layout.totalP > 0 && sideMaxA && p.imp && p.imp > sideMaxA) {
+    cRange = ` ⚠ Iclip ${p.imp}>${sideMaxA}A`;
   }
   const activeMark = isActive ? `  ◀ ${t('active')}` : '';
   svg.appendChild(svgText(R.x, -uPx(52),
-    `${tSide(side)}: ${layout.totalP} ${tPanels(layout.totalP)}  ${(layout.totalW/1000).toFixed(2)} kWp  1×${Math.round(vocSeries)}V${vRange}${activeMark}`,
+    `${tSide(side)}: ${layout.totalP} ${tPanels(layout.totalP)}  ${(layout.totalW/1000).toFixed(2)} kWp  1×${Math.round(vocSeries)}V→${Math.round(vocCold)}V@${Tmin}°${vRange}${cRange}${activeMark}`,
     'summary-text' + (isActive ? ' active' : '')));
   const warn = layout.panels.filter(pp => pp.rc < 2).length;
   const warnTxt = warn > 0 ? `  ⚠ ${warn} ${t('panel(s) <2 rails')}` : '';
@@ -1511,6 +1538,7 @@ function syncInputs() {
   document.getElementById('cfg-gapY').value = cfg.gapY;
   document.getElementById('cfg-panelIdx').value = cfg.panelIdx;
   document.getElementById('cfg-inverterIdx').value = state.inverterIdx ?? 0;
+  document.getElementById('cfg-designMinC').value = state.designMinC ?? DEFAULT_MIN_C;
 }
 
 function updateSidebar(layoutWest, layoutEast) {
@@ -1562,6 +1590,13 @@ document.getElementById('cfg-panelIdx').addEventListener('change', e => {
 document.getElementById('cfg-inverterIdx').addEventListener('change', e => {
   snapshot();
   state.inverterIdx = parseInt(e.target.value, 10);
+  render(); persist();
+});
+
+document.getElementById('cfg-designMinC').addEventListener('change', e => {
+  snapshot();
+  const v = parseFloat(e.target.value);
+  state.designMinC = isNaN(v) ? DEFAULT_MIN_C : v;
   render(); persist();
 });
 
